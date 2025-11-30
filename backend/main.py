@@ -22,12 +22,22 @@ from database.connection import engine, Base, SessionLocal
 from database.models import TradingConfig, User, Account, SystemConfig, AccountAssetSnapshot
 from services.asset_curve_calculator import invalidate_asset_curve_cache
 from config.settings import DEFAULT_TRADING_CONFIGS
-app = FastAPI(title="Crypto Paper Trading API")
+from version import __version__
+
+app = FastAPI(
+    title="Hyper Alpha Arena API",
+    version=__version__,
+    description="Cryptocurrency perpetual contract trading platform with AI-powered decision making"
+)
 
 # Health check endpoint
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "message": "Trading API is running"}
+    return {
+        "status": "healthy",
+        "message": "Trading API is running",
+        "version": __version__
+    }
 
 # Manual frontend rebuild endpoint
 @app.post("/api/rebuild-frontend")

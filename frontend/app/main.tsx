@@ -592,7 +592,7 @@ function App() {
         )}
 
         {currentPage === 'premium-features' && (
-          <PremiumFeaturesView onAccountUpdated={handleAccountUpdated} />
+          <PremiumFeaturesView onAccountUpdated={handleAccountUpdated} onPageChange={setCurrentPage} />
         )}
       </main>
     )

@@ -357,6 +357,78 @@ OUTPUT_FORMAT_JSON = (
     '}'
 )
 
+# Placeholder for max leverage in output format template
+MAX_LEVERAGE_PLACEHOLDER = "__MAX_LEVERAGE__"
+
+# Complete OUTPUT FORMAT template with all requirements and examples
+# Uses double-brace escaping for JSON literals to avoid format_map() conflicts
+OUTPUT_FORMAT_COMPLETE = """Respond with ONLY a JSON object using this schema (always emitting the `decisions` array even if it is empty):
+{{
+  "decisions": [
+    {{
+      "operation": "buy" | "sell" | "hold" | "close",
+      "symbol": "<__SYMBOL_SET__>",
+      "target_portion_of_balance": <float 0.0-1.0>,
+      "leverage": <integer 1-__MAX_LEVERAGE__>,
+      "max_price": <number, required for "buy" operations>,
+      "min_price": <number, required for "sell"/"close" operations>,
+      "time_in_force": <string, optional, "Ioc" (default) | "Gtc" | "Alo">,
+      "take_profit_price": <number, optional>,
+      "stop_loss_price": <number, optional>,
+      "reason": "<string explaining primary signals>",
+      "trading_strategy": "<string covering thesis, risk controls, and exit plan>"
+    }}
+  ]
+}}
+
+CRITICAL OUTPUT REQUIREMENTS:
+- Output MUST be a single, valid JSON object only
+- NO markdown code blocks (no ```json``` wrappers)
+- NO explanatory text before or after the JSON
+- NO comments or additional content outside the JSON object
+- Ensure all JSON fields are properly quoted and formatted
+- Double-check JSON syntax before responding
+
+Example output with multiple simultaneous orders:
+{{
+  "decisions": [
+    {{
+      "operation": "buy",
+      "symbol": "BTC",
+      "target_portion_of_balance": 0.3,
+      "leverage": 3,
+      "max_price": 49500,
+      "time_in_force": "Ioc",
+      "take_profit_price": 52000,
+      "stop_loss_price": 47500,
+      "reason": "Strong bullish momentum with support holding at $48k, RSI recovering from oversold",
+      "trading_strategy": "Opening 3x leveraged long position with 30% balance. Take profit at $52k resistance (+5%), stop loss below $47.5k swing low (-4%). Using IOC for immediate execution."
+    }},
+    {{
+      "operation": "sell",
+      "symbol": "ETH",
+      "target_portion_of_balance": 0.2,
+      "leverage": 2,
+      "min_price": 3125,
+      "reason": "ETH perp funding flipped elevated negative while momentum weakens",
+      "trading_strategy": "Initiating small short hedge until ETH regains strength vs BTC pair. Stop if ETH closes back above $3.2k structural pivot."
+    }}
+  ]
+}}
+
+FIELD TYPE REQUIREMENTS:
+- decisions: array (one entry per supported symbol; include HOLD entries with zero allocation when you choose not to act)
+- operation: string ("buy" for long, "sell" for short, "hold", or "close")
+- symbol: string (exactly one of: __SYMBOL_SET__)
+- target_portion_of_balance: number (float between 0.1 and 1.0)
+- leverage: integer (between 1 and __MAX_LEVERAGE__, REQUIRED field)
+- max_price: number (required for "buy" operations and closing SHORT positions. This is the maximum price you are willing to pay.)
+- min_price: number (required for "sell" operations and closing LONG positions. This is the minimum price you are willing to receive.)
+- take_profit_price: number (optional but recommended, trigger price for profit taking)
+- stop_loss_price: number (optional but recommended, trigger price for loss protection)
+- reason: string explaining the key catalyst, risk, or signal (no strict length limit, but stay focused)
+- trading_strategy: string covering entry thesis, leverage reasoning, liquidation awareness, and exit plan"""
+
 
 DECISION_TASK_TEXT = (
     "You are a systematic trader operating on the Hyper Alpha Arena sandbox (no real funds at risk).\n"
@@ -501,7 +573,8 @@ def _build_prompt_context(
     total_account_value = _format_currency(portfolio.get('total_assets'))
     holdings_detail = _build_holdings_detail(positions)
     market_prices = _build_market_prices(prices, ordered_symbols, symbol_display_map)
-    output_format = OUTPUT_FORMAT_JSON.replace(SYMBOL_PLACEHOLDER, output_symbol_choices or "SYMBOL")
+    # Legacy format (kept for backward compatibility with old templates)
+    output_format_legacy = OUTPUT_FORMAT_JSON.replace(SYMBOL_PLACEHOLDER, output_symbol_choices or "SYMBOL")
 
     # Hyperliquid-specific context - Get leverage settings from unified function
     # This ensures leverage values match the wallet configuration for the current environment
@@ -520,6 +593,9 @@ def _build_prompt_context(
         logger.warning(f"No db session provided to _build_prompt_context, using Account table fallback for leverage")
         max_leverage = getattr(account, "max_leverage", 3)
         default_leverage = getattr(account, "default_leverage", 1)
+
+    # Build complete output format with placeholders replaced
+    output_format = OUTPUT_FORMAT_COMPLETE.replace(SYMBOL_PLACEHOLDER, output_symbol_choices or "SYMBOL").replace(MAX_LEVERAGE_PLACEHOLDER, str(max_leverage))
 
     # Use hyperliquid_state to determine if this is Hyperliquid trading mode
     if hyperliquid_state and environment in ("testnet", "mainnet"):
@@ -1073,11 +1149,11 @@ def call_ai_for_decision(
         # For unknown models (not in our hardcoded list), use conservative longer timeout
         # Better to wait longer than to fail due to timeout
         if is_reasoning_model:
-            request_timeout = 120  # Known reasoning models
+            request_timeout = 240  # Known reasoning models (increased for slow reasoning models)
         else:
-            # Unknown models: use 60s as conservative default (between 30s chat and 120s reasoning)
+            # Unknown models: use 120s as conservative default
             # This handles custom model names, future models, and proxy services
-            request_timeout = 60
+            request_timeout = 120
 
         for endpoint in endpoints:
             for attempt in range(max_retries):
@@ -1629,7 +1705,7 @@ def _parse_kline_indicator_variables(template_text: str) -> Dict[str, Dict[str, 
         if indicator == 'MA':
             grouped[key]['indicators'].extend(['MA5', 'MA10', 'MA20'])
         elif indicator == 'EMA':
-            grouped[key]['indicators'].extend(['EMA20', 'EMA50'])
+            grouped[key]['indicators'].extend(['EMA20', 'EMA50', 'EMA100'])
         else:
             grouped[key]['indicators'].append(indicator)
 

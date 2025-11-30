@@ -807,7 +807,7 @@ export interface MembershipResponse {
 
 // Get membership information from external membership service
 // IMPORTANT: This function supports both same-domain and cross-domain access
-// - Same-domain (arena.akooi.com): Uses cookies automatically
+// - Same-domain: Uses cookies automatically
 // - Cross-domain (localhost/custom domains): Uses Authorization header with arena_token
 // This ensures paid users can access membership features regardless of deployment domain
 export async function getMembershipInfo(): Promise<MembershipResponse> {

@@ -445,3 +445,165 @@ def preview_prompt(
         })
 
     return {"previews": previews}
+
+
+# ============================================================================
+# AI Prompt Generation Chat APIs
+# ============================================================================
+
+from pydantic import BaseModel, Field
+from services.ai_prompt_generation_service import (
+    generate_prompt_with_ai,
+    get_conversation_history,
+    get_conversation_messages
+)
+from database.models import User, UserSubscription
+
+
+class AiChatRequest(BaseModel):
+    """Request to send a message to AI prompt generation chat"""
+    account_id: int = Field(..., alias="accountId")
+    user_message: str = Field(..., alias="userMessage")
+    conversation_id: Optional[int] = Field(None, alias="conversationId")
+
+    class Config:
+        populate_by_name = True
+
+
+class AiChatResponse(BaseModel):
+    """Response from AI prompt generation chat"""
+    success: bool
+    conversation_id: Optional[int] = Field(None, alias="conversationId")
+    message_id: Optional[int] = Field(None, alias="messageId")
+    content: Optional[str] = None
+    prompt_result: Optional[str] = Field(None, alias="promptResult")
+    error: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/ai-chat", response_model=AiChatResponse)
+def ai_chat(
+    request: AiChatRequest,
+    db: Session = Depends(get_db)
+) -> AiChatResponse:
+    """
+    Send a message to AI prompt generation assistant
+
+    Premium feature - requires active subscription
+    """
+    # Get user (default user for now)
+    user = db.query(User).filter(User.username == "default").first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check premium subscription
+    subscription = db.query(UserSubscription).filter(
+        UserSubscription.user_id == user.id
+    ).first()
+
+    if not subscription or subscription.subscription_type != "premium":
+        raise HTTPException(
+            status_code=403,
+            detail="This feature is only available for premium members"
+        )
+
+    # Get AI Trader account
+    account = db.query(Account).filter(Account.id == request.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="AI Trader not found")
+
+    if account.account_type != "AI":
+        raise HTTPException(status_code=400, detail="Selected account is not an AI Trader")
+
+    # Generate response
+    result = generate_prompt_with_ai(
+        db=db,
+        account=account,
+        user_message=request.user_message,
+        conversation_id=request.conversation_id,
+        user_id=user.id
+    )
+
+    return AiChatResponse(
+        success=result.get("success", False),
+        conversation_id=result.get("conversation_id"),
+        message_id=result.get("message_id"),
+        content=result.get("content"),
+        prompt_result=result.get("prompt_result"),
+        error=result.get("error")
+    )
+
+
+@router.get("/ai-conversations")
+def list_ai_conversations(
+    limit: int = 20,
+    db: Session = Depends(get_db)
+) -> Dict:
+    """
+    Get list of AI prompt generation conversations
+
+    Premium feature - requires active subscription
+    """
+    # Get user (default user for now)
+    user = db.query(User).filter(User.username == "default").first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check premium subscription
+    subscription = db.query(UserSubscription).filter(
+        UserSubscription.user_id == user.id
+    ).first()
+
+    if not subscription or subscription.subscription_type != "premium":
+        raise HTTPException(
+            status_code=403,
+            detail="This feature is only available for premium members"
+        )
+
+    conversations = get_conversation_history(
+        db=db,
+        user_id=user.id,
+        limit=limit
+    )
+
+    return {"conversations": conversations}
+
+
+@router.get("/ai-conversations/{conversation_id}/messages")
+def get_conversation_messages_api(
+    conversation_id: int,
+    db: Session = Depends(get_db)
+) -> Dict:
+    """
+    Get all messages in a specific conversation
+
+    Premium feature - requires active subscription
+    """
+    # Get user (default user for now)
+    user = db.query(User).filter(User.username == "default").first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check premium subscription
+    subscription = db.query(UserSubscription).filter(
+        UserSubscription.user_id == user.id
+    ).first()
+
+    if not subscription or subscription.subscription_type != "premium":
+        raise HTTPException(
+            status_code=403,
+            detail="This feature is only available for premium members"
+        )
+
+    messages = get_conversation_messages(
+        db=db,
+        conversation_id=conversation_id,
+        user_id=user.id
+    )
+
+    if messages is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return {"messages": messages}

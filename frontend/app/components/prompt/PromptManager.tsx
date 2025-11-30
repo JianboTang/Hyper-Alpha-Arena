@@ -14,6 +14,7 @@ import {
   PromptBinding,
   TradingAccount,
 } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -34,6 +35,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import PromptPreviewDialog from './PromptPreviewDialog'
+import AiPromptChatModal from './AiPromptChatModal'
+import PremiumRequiredModal from '@/components/ui/PremiumRequiredModal'
 
 interface BindingFormState {
   id?: number
@@ -71,6 +74,15 @@ export default function PromptManager() {
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   const [copyName, setCopyName] = useState('')
   const [copying, setCopying] = useState(false)
+
+  // AI Prompt Chat Modal
+  const [aiChatModalOpen, setAiChatModalOpen] = useState(false)
+
+  // Premium Modal
+  const [premiumModalOpen, setPremiumModalOpen] = useState(false)
+
+  // Auth context
+  const { user, membership } = useAuth()
 
   const selectedTemplate = useMemo(
     () => templates.find((tpl) => tpl.id === selectedId) || null,
@@ -322,6 +334,28 @@ export default function PromptManager() {
     })
   }
 
+  const handleAiWriteClick = () => {
+    // Check if user is logged in
+    if (!user) {
+      toast.error('Please log in to use this feature')
+      return
+    }
+
+    // Check premium status
+    if (membership?.status !== 'ACTIVE') {
+      setPremiumModalOpen(true)
+      return
+    }
+
+    // Premium user: open AI generator
+    setAiChatModalOpen(true)
+  }
+
+  const handleSubscribe = () => {
+    setPremiumModalOpen(false)
+    window.open('https://www.akooi.com/#pricing-section', '_blank')
+  }
+
   useEffect(() => {
     if (selectedTemplate) {
       setTemplateDraft(selectedTemplate.templateText)
@@ -429,7 +463,7 @@ export default function PromptManager() {
 
               {/* Template Text Area */}
               <div className="flex-1 flex flex-col overflow-hidden">
-                <label className="text-xs uppercase text-muted-foreground">Template Text</label>
+                <label className="text-xs uppercase text-muted-foreground mb-2">Template Text</label>
                 <textarea
                   className="flex-1 w-full rounded-md border bg-background p-3 font-mono text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-ring"
                   value={templateDraft}
@@ -440,13 +474,22 @@ export default function PromptManager() {
 
               {/* Action Buttons */}
               <div className="flex justify-between mt-2 gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setPreviewDialogOpen(true)}
-                  disabled={!selectedTemplate || saving}
-                >
-                  💡 Preview Filled
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleAiWriteClick}
+                    disabled={!selectedTemplate || saving}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all"
+                  >
+                    ✨ AI Write Strategy Prompt
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setPreviewDialogOpen(true)}
+                    disabled={!selectedTemplate || saving}
+                  >
+                    💡 Preview Filled
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button onClick={handleSaveTemplate} disabled={!selectedTemplate || saving}>
                     Save Template
@@ -671,6 +714,26 @@ export default function PromptManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Prompt Chat Modal */}
+      <AiPromptChatModal
+        open={aiChatModalOpen}
+        onOpenChange={setAiChatModalOpen}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
+        onApplyPrompt={(promptText) => {
+          setTemplateDraft(promptText)
+        }}
+      />
+
+      {/* Premium Required Modal */}
+      <PremiumRequiredModal
+        isOpen={premiumModalOpen}
+        onClose={() => setPremiumModalOpen(false)}
+        onSubscribe={handleSubscribe}
+        featureName="AI Strategy Prompt Generator"
+        description="Let AI help you write professional trading strategy prompts with natural language conversation."
+      />
     </>
   )
 }

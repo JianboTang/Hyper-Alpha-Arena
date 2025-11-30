@@ -48,6 +48,8 @@ def calculate_indicators(kline_data: List[Dict[str, Any]], indicators: List[str]
                     results['EMA20'] = _calculate_ema(df, 20)
                 elif indicator == 'EMA50':
                     results['EMA50'] = _calculate_ema(df, 50)
+                elif indicator == 'EMA100':
+                    results['EMA100'] = _calculate_ema(df, 100)
                 elif indicator == 'MA5':
                     results['MA5'] = _calculate_sma(df, 5)
                 elif indicator == 'MA10':
@@ -185,6 +187,7 @@ def get_available_indicators() -> List[Dict[str, str]]:
         {'name': 'MA20', 'description': '20期简单移动平均线'},
         {'name': 'EMA20', 'description': '20期指数移动平均线'},
         {'name': 'EMA50', 'description': '50期指数移动平均线'},
+        {'name': 'EMA100', 'description': '100期指数移动平均线'},
         {'name': 'MACD', 'description': '移动平均收敛发散指标'},
         {'name': 'RSI14', 'description': '14期相对强弱指数'},
         {'name': 'RSI7', 'description': '7期相对强弱指数'},
