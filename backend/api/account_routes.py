@@ -1022,3 +1022,144 @@ async def trigger_ai_trade(
             status_code=500,
             detail=f"Failed to trigger AI trade: {str(e)}"
         )
+
+
+@router.get("/hyperliquid/check-builder-authorization")
+async def check_builder_authorization(
+    wallet_address: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Check if a wallet address has authorized the platform's builder fee.
+
+    Args:
+        wallet_address: The Hyperliquid wallet address to check
+
+    Returns:
+        {
+            "authorized": bool,  # True if authorized with sufficient fee
+            "max_fee": int,      # Maximum fee approved (in tenths of basis point)
+            "required_fee": int  # Required fee by platform (in tenths of basis point)
+        }
+    """
+    try:
+        import requests
+        from config.settings import HYPERLIQUID_BUILDER_CONFIG
+
+        # Query Hyperliquid API for max builder fee
+        response = requests.post(
+            "https://api.hyperliquid.xyz/info",
+            json={
+                "type": "maxBuilderFee",
+                "user": wallet_address,
+                "builder": HYPERLIQUID_BUILDER_CONFIG.builder_address
+            },
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Failed to check builder authorization: HTTP {response.status_code}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to query Hyperliquid authorization status"
+            )
+
+        max_fee = response.json()  # Returns integer (e.g., 30 for 0.03%)
+        required_fee = HYPERLIQUID_BUILDER_CONFIG.builder_fee
+
+        return {
+            "authorized": max_fee >= required_fee,
+            "max_fee": max_fee,
+            "required_fee": required_fee,
+            "builder_address": HYPERLIQUID_BUILDER_CONFIG.builder_address
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error checking builder authorization: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Network error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error checking builder authorization: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check authorization: {str(e)}"
+        )
+
+
+@router.post("/hyperliquid/approve-builder")
+async def approve_builder_fee(
+    account_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger builder fee approval for a Hyperliquid account.
+
+    This endpoint initiates the approval process where the user's wallet
+    will be prompted to sign a transaction approving the platform's builder fee.
+
+    Args:
+        account_id: The account ID to approve builder fee for
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "builder_address": str,
+            "approved_fee": str  # e.g., "0.03%"
+        }
+    """
+    try:
+        from config.settings import HYPERLIQUID_BUILDER_CONFIG
+        from services.hyperliquid_environment import get_hyperliquid_client
+
+        # Get account
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail=f"Account {account_id} not found")
+
+        # Verify it's a Hyperliquid account
+        hyperliquid_environment = getattr(account, "hyperliquid_environment", None)
+        if hyperliquid_environment not in ["testnet", "mainnet"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Account is not configured for Hyperliquid trading"
+            )
+
+        # Get Hyperliquid client (which has access to the exchange SDK)
+        client = get_hyperliquid_client(db, account_id)
+
+        # Calculate fee percentage for display (e.g., 30 -> "0.03%")
+        fee_bps = HYPERLIQUID_BUILDER_CONFIG.builder_fee / 10  # Convert to basis points
+        fee_percentage = f"{fee_bps / 100}%"  # Convert to percentage string
+
+        # Call approve_builder_fee on the exchange
+        # This will trigger wallet signature request
+        result = client.sdk_exchange.approve_builder_fee(
+            HYPERLIQUID_BUILDER_CONFIG.builder_address,
+            fee_percentage
+        )
+
+        logger.info(
+            f"Builder fee approval initiated for account {account_id}: "
+            f"builder={HYPERLIQUID_BUILDER_CONFIG.builder_address}, "
+            f"fee={fee_percentage}, result={result}"
+        )
+
+        return {
+            "success": True,
+            "message": f"Builder fee approval initiated. Please confirm in your wallet.",
+            "builder_address": HYPERLIQUID_BUILDER_CONFIG.builder_address,
+            "approved_fee": fee_percentage,
+            "result": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to approve builder fee for account {account_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to approve builder fee: {str(e)}"
+        )

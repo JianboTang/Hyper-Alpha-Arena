@@ -241,6 +241,21 @@ class HyperliquidTradingClient:
         except Exception:
             return str(payload)
 
+    def _get_builder_params(self) -> Dict[str, Any]:
+        """
+        Get builder fee parameters for orders
+
+        Returns:
+            Dict with builder address and fee rate
+            Format: {"b": "0x...", "f": 30}
+        """
+        from config.settings import HYPERLIQUID_BUILDER_CONFIG
+
+        return {
+            "b": HYPERLIQUID_BUILDER_CONFIG.builder_address,
+            "f": HYPERLIQUID_BUILDER_CONFIG.builder_fee
+        }
+
     def _record_exchange_action(
         self,
         action_type: str,
@@ -1759,7 +1774,8 @@ class HyperliquidTradingClient:
                             sz=position_size,
                             limit_px=rounded_tp,
                             order_type=tp_order_type,
-                            reduce_only=True
+                            reduce_only=True,
+                            builder=self._get_builder_params()
                         )
 
                         if tp_result.get("status") == "ok":
@@ -1844,7 +1860,8 @@ class HyperliquidTradingClient:
                             sz=position_size,
                             limit_px=rounded_sl,
                             order_type=sl_order_type,
-                            reduce_only=True
+                            reduce_only=True,
+                            builder=self._get_builder_params()
                         )
 
                         if sl_result.get("status") == "ok":
@@ -2521,7 +2538,8 @@ class HyperliquidTradingClient:
                 sz=size,
                 limit_px=price,
                 order_type=order_type,
-                reduce_only=reduce_only
+                reduce_only=reduce_only,
+                builder=self._get_builder_params()
             )
 
             logger.info(f"[SDK] Main order result: {main_result}")
@@ -2585,7 +2603,8 @@ class HyperliquidTradingClient:
                             sz=size,
                             limit_px=take_profit_price,
                             order_type=tp_order_type,
-                            reduce_only=True
+                            reduce_only=True,
+                            builder=self._get_builder_params()
                         )
 
                         logger.info(f"[SDK] TP order result: {tp_result}")
@@ -2618,7 +2637,8 @@ class HyperliquidTradingClient:
                             sz=size,
                             limit_px=stop_loss_price,
                             order_type=sl_order_type,
-                            reduce_only=True
+                            reduce_only=True,
+                            builder=self._get_builder_params()
                         )
 
                         logger.info(f"[SDK] SL order result: {sl_result}")
