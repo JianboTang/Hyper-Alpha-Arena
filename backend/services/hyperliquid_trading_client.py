@@ -1030,14 +1030,15 @@ class HyperliquidTradingClient:
         try:
             # Set leverage before placing order (if different from current)
             try:
-                self.exchange.set_leverage(leverage, f"{symbol}/USDC:USDC")
-                logger.debug(f"Set leverage to {leverage}x for {symbol}")
+                result = self.sdk_exchange.update_leverage(leverage, symbol, is_cross=True)
+                logger.debug(f"Set leverage to {leverage}x for {symbol}, result: {result}")
                 self._record_exchange_action(
                     action_type="set_leverage",
                     status="success",
                     symbol=symbol,
                     leverage=leverage,
                     request_payload={"symbol": symbol, "leverage": leverage},
+                    response_payload=result,
                 )
             except Exception as lev_err:
                 logger.warning(f"Failed to set leverage (may already be set): {lev_err}")
@@ -1223,7 +1224,7 @@ class HyperliquidTradingClient:
 
     def set_leverage(self, db: Session, symbol: str, leverage: int) -> bool:
         """
-        Set leverage for a specific asset
+        Set leverage for a specific asset using Hyperliquid SDK
 
         Args:
             db: Database session
@@ -1245,14 +1246,30 @@ class HyperliquidTradingClient:
         try:
             logger.info(f"Setting leverage for {symbol} to {leverage}x on {self.environment}")
 
-            # TODO: Implement actual Hyperliquid leverage setting
-            # For reference, Hyperliquid exchange endpoint:
-            # POST /exchange with action type "updateLeverage"
+            result = self.sdk_exchange.update_leverage(leverage, symbol, is_cross=True)
+            logger.debug(f"Set leverage result: {result}")
+
+            self._record_exchange_action(
+                action_type="set_leverage",
+                status="success",
+                symbol=symbol,
+                leverage=leverage,
+                request_payload={"symbol": symbol, "leverage": leverage},
+                response_payload=result,
+            )
 
             return True
 
         except Exception as e:
             logger.error(f"Failed to set leverage: {e}")
+            self._record_exchange_action(
+                action_type="set_leverage",
+                status="error",
+                symbol=symbol,
+                leverage=leverage,
+                request_payload={"symbol": symbol, "leverage": leverage},
+                error_message=str(e),
+            )
             raise
 
     def cancel_order(self, db: Session, order_id: Any, symbol: str) -> bool:
@@ -2527,14 +2544,15 @@ class HyperliquidTradingClient:
         try:
             # Set leverage before placing order
             try:
-                self.exchange.set_leverage(leverage, f"{symbol}/USDC:USDC")
-                logger.debug(f"Set leverage to {leverage}x for {symbol}")
+                result = self.sdk_exchange.update_leverage(leverage, symbol, is_cross=True)
+                logger.debug(f"Set leverage to {leverage}x for {symbol}, result: {result}")
                 self._record_exchange_action(
                     action_type="set_leverage",
                     status="success",
                     symbol=symbol,
                     leverage=leverage,
                     request_payload={"symbol": symbol, "leverage": leverage},
+                    response_payload=result,
                 )
             except Exception as lev_err:
                 logger.warning(f"Failed to set leverage (may already be set): {lev_err}")
