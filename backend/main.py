@@ -441,6 +441,7 @@ from api.hyperliquid_routes import router as hyperliquid_router
 from api.user_routes import router as user_router
 from api.kline_routes import router as kline_router
 from api.kline_analysis_routes import router as kline_analysis_router
+from api.market_flow_routes import router as market_flow_router
 # Removed: AI account routes merged into account_routes (unified AI trader accounts)
 
 app.include_router(market_data_router)
@@ -458,6 +459,7 @@ app.include_router(hyperliquid_router)
 app.include_router(user_router)
 app.include_router(kline_router)
 app.include_router(kline_analysis_router)
+app.include_router(market_flow_router)
 # app.include_router(ai_account_router, prefix="/api")  # Removed - merged into account_router
 
 # Strategy route aliases for frontend compatibility

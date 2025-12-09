@@ -44,6 +44,7 @@ export default function KlinesView({ onAccountUpdated }: KlinesViewProps) {
   const [klinesData, setKlinesData] = useState<any[]>([])
   const [indicatorsData, setIndicatorsData] = useState<Record<string, any>>({})
   const [indicatorLoading, setIndicatorLoading] = useState(false)
+  const [selectedFlowIndicators, setSelectedFlowIndicators] = useState<string[]>([])
 
   const marketDataIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const taskCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -322,54 +323,83 @@ export default function KlinesView({ onAccountUpdated }: KlinesViewProps) {
 
           {/* Market Data */}
           <Card className="lg:col-span-2">
-            <CardHeader className="py-3">
+            <CardHeader className="py-2">
               <CardTitle className="text-sm">Market Data</CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 space-y-2">
               {selectedSymbol && (
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {(() => {
                     const data = getSymbolMarketData(selectedSymbol)
                     return data ? (
                       <>
                         <div>
-                          <p className="text-xs text-muted-foreground">Mark</p>
-                        <p className="text-base font-semibold">{data.price.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Oracle</p>
-                        <p className="text-base font-semibold">{data.oracle_price.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">24h Change</p>
-                        <p className={`text-base font-semibold ${data.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {data.change24h >= 0 ? '+' : ''}{data.change24h.toFixed(0)} / {data.percentage24h >= 0 ? "+" : ""}{data.percentage24h.toFixed(2)}%
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">24h Volume</p>
-                        <p className="text-base font-semibold">${formatCompactNumber(data.volume24h)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Open Interest</p>
-                        <p className="text-base font-semibold">${formatCompactNumber(data.open_interest)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Funding Rate</p>
-                        <p className="text-base font-semibold">{(data.funding_rate * 100).toFixed(4)}%</p>
-                      </div>
-                    </>
+                          <p className="text-xs text-muted-foreground">Mark Price</p>
+                          <p className="text-sm font-semibold">{data.price.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Oracle Price</p>
+                          <p className="text-sm font-semibold">{data.oracle_price.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">24h Change</p>
+                          <p className={`text-sm font-semibold ${data.change24h >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {data.percentage24h >= 0 ? "+" : ""}{data.percentage24h.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">24h Volume</p>
+                          <p className="text-sm font-semibold">${formatCompactNumber(data.volume24h)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Open Interest</p>
+                          <p className="text-sm font-semibold">${formatCompactNumber(data.open_interest)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Funding Rate</p>
+                          <p className="text-sm font-semibold">{(data.funding_rate * 100).toFixed(4)}%</p>
+                        </div>
+                      </>
                     ) : (
                       <div className="col-span-full text-center text-muted-foreground">
                         <div className="flex items-center justify-center gap-2">
                           <PacmanLoader className="w-12 h-6" />
-                          Loading market data...
+                          <span className="text-xs">Loading...</span>
                         </div>
                       </div>
                     )
                   })()}
                 </div>
               )}
+              {/* Market Flow Indicators */}
+              <div className="flex items-center gap-2 pt-2 border-t">
+                <span className="text-xs text-muted-foreground font-medium">Flow</span>
+                <div className="flex gap-1.5 flex-wrap">
+                  {[
+                    { key: 'cvd', label: 'CVD' },
+                    { key: 'taker_volume', label: 'Taker Vol' },
+                    { key: 'oi', label: 'OI' },
+                    { key: 'oi_delta', label: 'OI Delta' },
+                    { key: 'funding', label: 'Funding' },
+                    { key: 'depth_ratio', label: 'Depth(log)' },
+                    { key: 'order_imbalance', label: 'Imbalance' }
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedFlowIndicators(prev =>
+                        prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                      )}
+                      className={`px-2 py-1 text-xs rounded transition-colors ${
+                        selectedFlowIndicators.includes(key)
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                          : 'hover:bg-muted border'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -536,18 +566,19 @@ export default function KlinesView({ onAccountUpdated }: KlinesViewProps) {
             </div>
           </CardHeader>
             <CardContent className="h-[calc(100%-3rem)] pb-4">
-              <TradingViewChart
-                symbol={selectedSymbol}
-                period={selectedPeriod}
-                chartType={chartType}
-                selectedIndicators={selectedIndicators}
-                onLoadingChange={setChartLoading}
-                onIndicatorLoadingChange={setIndicatorLoading}
-                onDataUpdate={(klines, indicators) => {
-                  setKlinesData(klines || [])
-                  setIndicatorsData(indicators || {})
-                }}
-              />
+                <TradingViewChart
+                  symbol={selectedSymbol}
+                  period={selectedPeriod}
+                  chartType={chartType}
+                  selectedIndicators={selectedIndicators}
+                  selectedFlowIndicators={selectedFlowIndicators}
+                  onLoadingChange={setChartLoading}
+                  onIndicatorLoadingChange={setIndicatorLoading}
+                  onDataUpdate={(klines, indicators) => {
+                    setKlinesData(klines || [])
+                    setIndicatorsData(indicators || {})
+                  }}
+                />
           </CardContent>
         </Card>
       </div>

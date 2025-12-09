@@ -382,4 +382,12 @@ def refresh_market_stream_symbols() -> List[str]:
     else:
         start_market_stream(combined, interval_seconds=1.5)
 
+    # Also refresh market flow collector subscriptions
+    try:
+        from services.market_flow_collector import market_flow_collector
+        hyperliquid_symbols = get_selected_symbols()
+        market_flow_collector.refresh_subscriptions(hyperliquid_symbols)
+    except Exception as err:
+        logger.warning("Unable to update market flow collector: %s", err)
+
     return combined

@@ -635,7 +635,87 @@ class AiPromptMessage(Base):
     conversation = relationship("AiPromptConversation", back_populates="messages")
 
 
+# ============================================================================
+# Market Flow Data Tables (for fund flow analysis)
+# ============================================================================
+
+class MarketTradesAggregated(Base):
+    """15-second aggregated trade data for CVD and Taker Volume analysis"""
+    __tablename__ = "market_trades_aggregated"
+
+    id = Column(Integer, primary_key=True, index=True)
+    exchange = Column(String(20), nullable=False, default="hyperliquid", index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timestamp = Column(Integer, nullable=False, index=True)  # milliseconds
+    taker_buy_volume = Column(DECIMAL(24, 8), nullable=False, default=0)
+    taker_sell_volume = Column(DECIMAL(24, 8), nullable=False, default=0)
+    taker_buy_count = Column(Integer, nullable=False, default=0)
+    taker_sell_count = Column(Integer, nullable=False, default=0)
+    taker_buy_notional = Column(DECIMAL(24, 6), nullable=False, default=0)
+    taker_sell_notional = Column(DECIMAL(24, 6), nullable=False, default=0)
+    vwap = Column(DECIMAL(18, 6), nullable=True)
+    high_price = Column(DECIMAL(18, 6), nullable=True)
+    low_price = Column(DECIMAL(18, 6), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    __table_args__ = (
+        UniqueConstraint('exchange', 'symbol', 'timestamp',
+                         name='market_trades_aggregated_exchange_symbol_timestamp_key'),
+    )
+
+
+class MarketOrderbookSnapshots(Base):
+    """Order book snapshots for depth ratio and liquidity analysis"""
+    __tablename__ = "market_orderbook_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    exchange = Column(String(20), nullable=False, default="hyperliquid", index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timestamp = Column(Integer, nullable=False, index=True)  # milliseconds
+    best_bid = Column(DECIMAL(18, 6), nullable=True)
+    best_ask = Column(DECIMAL(18, 6), nullable=True)
+    spread = Column(DECIMAL(18, 6), nullable=True)
+    bid_depth_5 = Column(DECIMAL(24, 8), nullable=False, default=0)
+    ask_depth_5 = Column(DECIMAL(24, 8), nullable=False, default=0)
+    bid_depth_10 = Column(DECIMAL(24, 8), nullable=False, default=0)
+    ask_depth_10 = Column(DECIMAL(24, 8), nullable=False, default=0)
+    bid_orders_count = Column(Integer, nullable=False, default=0)
+    ask_orders_count = Column(Integer, nullable=False, default=0)
+    raw_levels = Column(Text, nullable=True)  # JSON string of full orderbook
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    __table_args__ = (
+        UniqueConstraint('exchange', 'symbol', 'timestamp',
+                         name='market_orderbook_snapshots_exchange_symbol_timestamp_key'),
+    )
+
+
+class MarketAssetMetrics(Base):
+    """Asset metrics snapshots for OI, Funding Rate, and Premium analysis"""
+    __tablename__ = "market_asset_metrics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    exchange = Column(String(20), nullable=False, default="hyperliquid", index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    timestamp = Column(Integer, nullable=False, index=True)  # milliseconds
+    open_interest = Column(DECIMAL(24, 8), nullable=True)
+    funding_rate = Column(DECIMAL(18, 8), nullable=True)
+    mark_price = Column(DECIMAL(18, 6), nullable=True)
+    oracle_price = Column(DECIMAL(18, 6), nullable=True)
+    mid_price = Column(DECIMAL(18, 6), nullable=True)
+    premium = Column(DECIMAL(18, 8), nullable=True)
+    day_notional_volume = Column(DECIMAL(24, 6), nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    __table_args__ = (
+        UniqueConstraint('exchange', 'symbol', 'timestamp',
+                         name='market_asset_metrics_exchange_symbol_timestamp_key'),
+    )
+
+
+# ============================================================================
 # CRYPTO market trading configuration constants
+# ============================================================================
 CRYPTO_MIN_COMMISSION = 0.1  # $0.1 minimum commission
 CRYPTO_COMMISSION_RATE = 0.001  # 0.1% commission rate
 CRYPTO_MIN_ORDER_QUANTITY = 1

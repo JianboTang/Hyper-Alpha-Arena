@@ -8,6 +8,7 @@ interface TradingViewChartProps {
   period: string
   chartType: 'candlestick' | 'line' | 'area'
   selectedIndicators: string[]
+  selectedFlowIndicators?: string[]
   onLoadingChange: (loading: boolean) => void
   data?: any[]
   onLoadMore?: () => void
@@ -22,6 +23,7 @@ export default function TradingViewChart({
   period,
   chartType,
   selectedIndicators,
+  selectedFlowIndicators = [],
   onLoadingChange,
   data = [],
   onLoadMore,
@@ -47,6 +49,21 @@ export default function TradingViewChart({
   const atrSeriesRef = useRef<any>(null)
   const stochSeriesRef = useRef<any>(null)
   const obvSeriesRef = useRef<any>(null)
+  // Market Flow refs - all series pre-created in flow pane
+  const flowPaneRef = useRef<any>(null)
+  const flowLabelRef = useRef<any>(null)
+  const flowCvdSeriesRef = useRef<any>(null)
+  const flowTakerBuySeriesRef = useRef<any>(null)
+  const flowTakerSellSeriesRef = useRef<any>(null)
+  const flowOiSeriesRef = useRef<any>(null)
+  const flowOiDeltaSeriesRef = useRef<any>(null)
+  const flowFundingSeriesRef = useRef<any>(null)
+  const flowDepthSeriesRef = useRef<any>(null)
+  const flowImbalanceSeriesRef = useRef<any>(null)
+  const [activeFlowIndicator, setActiveFlowIndicator] = useState<string | null>(null)
+  const [flowDataCache, setFlowDataCache] = useState<Record<string, any[]>>({})
+  const [flowDataAvailableFrom, setFlowDataAvailableFrom] = useState<number | null>(null)
+  const prevFlowIndicatorsRef = useRef<string[]>([])
   const [loading, setLoading] = useState(false)
   const [hasData, setHasData] = useState(false)
   const [chartData, setChartData] = useState<any[]>([])
@@ -57,6 +74,30 @@ export default function TradingViewChart({
   const indicatorLabelRef = useRef<any>(null)
   const prevIndicatorsRef = useRef<string[]>([])
   const prevSubplotIndicatorsRef = useRef<string[]>([])
+  // Pane position tracking for selector placement
+  const [indicatorPaneTop, setIndicatorPaneTop] = useState<number | null>(null)
+  const [flowPaneTop, setFlowPaneTop] = useState<number | null>(null)
+
+  // Market Flow indicator colors
+  const FLOW_COLORS: Record<string, { up: string; down: string; line: string }> = {
+    cvd: { up: '#22c55e', down: '#ef4444', line: '#3b82f6' },
+    taker_volume: { up: '#22c55e', down: '#ef4444', line: '#3b82f6' },
+    oi: { up: '#22c55e', down: '#ef4444', line: '#8b5cf6' },
+    oi_delta: { up: '#22c55e', down: '#ef4444', line: '#8b5cf6' },
+    funding: { up: '#22c55e', down: '#ef4444', line: '#f59e0b' },
+    depth_ratio: { up: '#22c55e', down: '#ef4444', line: '#06b6d4' },
+    order_imbalance: { up: '#22c55e', down: '#ef4444', line: '#ec4899' }
+  }
+
+  const FLOW_LABELS: Record<string, string> = {
+    cvd: 'CVD',
+    taker_volume: 'Taker Volume',
+    oi: 'Open Interest',
+    oi_delta: 'OI Delta',
+    funding: 'Funding Rate (bps)',
+    depth_ratio: 'Depth Ratio (log)',
+    order_imbalance: 'Order Imbalance'
+  }
 
   // 检测是否需要重新初始化图表（子图结构变化）
   const needsChartReinit = (prevIndicators: string[], newIndicators: string[]) => {
@@ -66,6 +107,41 @@ export default function TradingViewChart({
 
     // 子图指标从无到有，或从有到无，需要重新初始化
     return (prevSubplots.length === 0) !== (newSubplots.length === 0)
+  }
+
+  // Calculate pane positions for selector placement
+  const updatePanePositions = () => {
+    if (!chartRef.current || !chartContainerRef.current) return
+    const panes = chartRef.current.panes()
+    const totalHeight = chartContainerRef.current.clientHeight
+    let totalStretch = 0
+    const stretchFactors: number[] = []
+    for (const pane of panes) {
+      const factor = pane.getStretchFactor?.() || 1
+      stretchFactors.push(factor)
+      totalStretch += factor
+    }
+    // Calculate cumulative top positions
+    let currentTop = 0
+    const panePositions: number[] = []
+    for (let i = 0; i < panes.length; i++) {
+      panePositions.push(currentTop)
+      currentTop += (stretchFactors[i] / totalStretch) * totalHeight
+    }
+    // Update indicator pane position (pane index 2 if exists)
+    if (indicatorPaneRef.current && panes.length > 2) {
+      const idx = panes.indexOf(indicatorPaneRef.current)
+      if (idx >= 0) setIndicatorPaneTop(panePositions[idx])
+    } else {
+      setIndicatorPaneTop(null)
+    }
+    // Update flow pane position
+    if (flowPaneRef.current) {
+      const idx = panes.indexOf(flowPaneRef.current)
+      if (idx >= 0) setFlowPaneTop(panePositions[idx])
+    } else {
+      setFlowPaneTop(null)
+    }
   }
 
   // 创建 pane 标签的 primitive
@@ -401,11 +477,15 @@ export default function TradingViewChart({
             const { width, height } = entry.contentRect
             if (chartRef.current && width > 0 && height > 0) {
               chartRef.current.applyOptions({ width, height })
+              updatePanePositions()
             }
           }
         }, 100)
       })
       resizeObserver.observe(container)
+
+      // Initial pane position calculation
+      setTimeout(() => updatePanePositions(), 50)
 
       return () => {
         clearTimeout(resizeTimeout)
@@ -432,6 +512,17 @@ export default function TradingViewChart({
           obvSeriesRef.current = null
           indicatorPaneRef.current = null
           indicatorLabelRef.current = null
+          // Clean up flow refs
+          flowPaneRef.current = null
+          flowLabelRef.current = null
+          flowCvdSeriesRef.current = null
+          flowTakerBuySeriesRef.current = null
+          flowTakerSellSeriesRef.current = null
+          flowOiSeriesRef.current = null
+          flowOiDeltaSeriesRef.current = null
+          flowFundingSeriesRef.current = null
+          flowDepthSeriesRef.current = null
+          flowImbalanceSeriesRef.current = null
         }
       }
     } catch (error) {
@@ -460,6 +551,17 @@ export default function TradingViewChart({
       // 保存当前数据，重新初始化图表
       if (chartRef.current) {
         chartRef.current.remove()
+        // Clear flow pane refs since chart is destroyed - they will be recreated
+        flowPaneRef.current = null
+        flowLabelRef.current = null
+        flowCvdSeriesRef.current = null
+        flowTakerBuySeriesRef.current = null
+        flowTakerSellSeriesRef.current = null
+        flowOiSeriesRef.current = null
+        flowOiDeltaSeriesRef.current = null
+        flowFundingSeriesRef.current = null
+        flowDepthSeriesRef.current = null
+        flowImbalanceSeriesRef.current = null
       }
 
       try {
@@ -798,6 +900,63 @@ export default function TradingViewChart({
             const showOBV = resolvedActiveSubplot === 'OBV' && selectedIndicators.includes('OBV')
             obvSeriesRef.current.applyOptions({ visible: showOBV })
           }
+
+          // Recreate flow pane if there are selected flow indicators
+          if (selectedFlowIndicators.length > 0 && chartRef.current && !flowPaneRef.current) {
+            const flowPane = chartRef.current.addPane()
+            flowPane.setStretchFactor(1)
+            const labelPrimitive = createPaneLabel('Market Flow')
+            flowPane.attachPrimitive(labelPrimitive)
+            flowLabelRef.current = labelPrimitive
+            flowPaneRef.current = flowPane
+
+            // Pre-create all flow series
+            flowCvdSeriesRef.current = flowPane.addSeries(LineSeries, {
+              color: FLOW_COLORS.cvd.line, lineWidth: 2, visible: false,
+              priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+            })
+            flowTakerBuySeriesRef.current = flowPane.addSeries(HistogramSeries, {
+              color: FLOW_COLORS.taker_volume.up, visible: false,
+              priceFormat: { type: 'volume' }
+            })
+            flowTakerSellSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+              color: FLOW_COLORS.taker_volume.down, visible: false,
+              priceFormat: { type: 'volume' }
+            })
+            flowOiSeriesRef.current = flowPane.addSeries(LineSeries, {
+              color: FLOW_COLORS.oi.line, lineWidth: 2, visible: false,
+              priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+            })
+            flowOiDeltaSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+              color: FLOW_COLORS.oi_delta.line, visible: false,
+              priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+            })
+            flowFundingSeriesRef.current = flowPane.addSeries(LineSeries, {
+              color: FLOW_COLORS.funding.line, lineWidth: 2, visible: false,
+              priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+            })
+            flowDepthSeriesRef.current = flowPane.addSeries(LineSeries, {
+              color: FLOW_COLORS.depth_ratio.line, lineWidth: 2, visible: false,
+              priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+            })
+            flowImbalanceSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+              color: FLOW_COLORS.order_imbalance.line, visible: false,
+              priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+            })
+
+            // Show active indicator and fetch data
+            if (activeFlowIndicator) {
+              showFlowSeries(activeFlowIndicator)
+              updateFlowPaneLabel(activeFlowIndicator)
+              if (flowDataCache[activeFlowIndicator]) {
+                updateFlowSeries(activeFlowIndicator, flowDataCache[activeFlowIndicator])
+              } else {
+                fetchFlowData(activeFlowIndicator)
+              }
+            }
+            // Update pane positions after flow pane created
+            updatePanePositions()
+          }
         }, 0)
       } catch (error) {
         console.error('Chart reinitialization failed:', error)
@@ -1095,12 +1254,143 @@ export default function TradingViewChart({
       obvSeriesRef.current.applyOptions({ visible: showOBV })
     }
 
-    // 更新指标 pane 标签
-    if (resolvedActiveSubplot && subplotIndicators.includes(resolvedActiveSubplot)) {
-      updateIndicatorPaneLabel(resolvedActiveSubplot)
-    }
+    // Indicator pane label is fixed as "Indicators" - no need to update
   }, [selectedIndicators, activeSubplot])
 
+  // Fetch market flow indicator data with loading state
+  const fetchFlowData = async (indicator: string) => {
+    if (!indicator || !symbol) return
+
+    onIndicatorLoadingChange?.(true)
+    try {
+      const endTime = Date.now()
+      const startTime = endTime - 7 * 24 * 60 * 60 * 1000 // 7 days
+      const response = await fetch(
+        `/api/market-flow/indicators?symbol=${symbol}&timeframe=${period}&start_time=${startTime}&end_time=${endTime}&indicators=${indicator}`
+      )
+      if (!response.ok) return
+
+      const data = await response.json()
+      setFlowDataAvailableFrom(data.data_available_from)
+      const indicatorData = data.indicators[indicator] || []
+
+      // Cache the data
+      setFlowDataCache(prev => ({ ...prev, [indicator]: indicatorData }))
+
+      // Update the series
+      updateFlowSeries(indicator, indicatorData)
+    } catch (error) {
+      console.error('Failed to fetch flow data:', error)
+    } finally {
+      onIndicatorLoadingChange?.(false)
+    }
+  }
+
+  // Get series ref for a flow indicator
+  const getFlowSeriesRef = (indicator: string) => {
+    switch (indicator) {
+      case 'cvd': return flowCvdSeriesRef
+      case 'taker_volume': return { buy: flowTakerBuySeriesRef, sell: flowTakerSellSeriesRef }
+      case 'oi': return flowOiSeriesRef
+      case 'oi_delta': return flowOiDeltaSeriesRef
+      case 'funding': return flowFundingSeriesRef
+      case 'depth_ratio': return flowDepthSeriesRef
+      case 'order_imbalance': return flowImbalanceSeriesRef
+      default: return null
+    }
+  }
+
+  // Update flow series with data
+  const updateFlowSeries = (indicator: string, data: any[]) => {
+    if (!data || data.length === 0) return
+
+    const colors = FLOW_COLORS[indicator]
+
+    if (indicator === 'taker_volume') {
+      if (flowTakerBuySeriesRef.current) {
+        const buyData = data.map(d => ({
+          time: formatChartTime(d.time),
+          value: d.buy || 0,
+          color: colors.up
+        }))
+        flowTakerBuySeriesRef.current.setData(buyData)
+      }
+      if (flowTakerSellSeriesRef.current) {
+        const sellData = data.map(d => ({
+          time: formatChartTime(d.time),
+          value: -(d.sell || 0),
+          color: colors.down
+        }))
+        flowTakerSellSeriesRef.current.setData(sellData)
+      }
+    } else {
+      const seriesRef = getFlowSeriesRef(indicator)
+      if (seriesRef && 'current' in seriesRef && seriesRef.current) {
+        if (['oi_delta', 'order_imbalance'].includes(indicator)) {
+          const histData = data.map(d => ({
+            time: formatChartTime(d.time),
+            value: d.value || 0,
+            color: (d.value || 0) >= 0 ? colors.up : colors.down
+          }))
+          seriesRef.current.setData(histData)
+        } else if (indicator === 'depth_ratio') {
+          // Use log scale for depth_ratio to handle extreme values
+          const lineData = data.map(d => ({
+            time: formatChartTime(d.time),
+            value: d.value > 0 ? Math.log10(d.value) : 0
+          }))
+          seriesRef.current.setData(lineData)
+        } else if (indicator === 'funding') {
+          // Multiply by 10000 to convert to basis points (bps) for better display
+          // e.g., 0.000292% becomes 2.92 bps
+          const lineData = data.map(d => ({
+            time: formatChartTime(d.time),
+            value: (d.value || 0) * 10000
+          }))
+          seriesRef.current.setData(lineData)
+        } else {
+          const lineData = data.map(d => ({
+            time: formatChartTime(d.time),
+            value: d.value
+          }))
+          seriesRef.current.setData(lineData)
+        }
+      }
+    }
+  }
+
+  // Update flow pane label
+  const updateFlowPaneLabel = (indicator: string) => {
+    if (flowLabelRef.current && flowLabelRef.current.updateText) {
+      flowLabelRef.current.updateText(FLOW_LABELS[indicator] || indicator)
+    }
+  }
+
+  // Hide all flow series
+  const hideAllFlowSeries = () => {
+    flowCvdSeriesRef.current?.applyOptions({ visible: false })
+    flowTakerBuySeriesRef.current?.applyOptions({ visible: false })
+    flowTakerSellSeriesRef.current?.applyOptions({ visible: false })
+    flowOiSeriesRef.current?.applyOptions({ visible: false })
+    flowOiDeltaSeriesRef.current?.applyOptions({ visible: false })
+    flowFundingSeriesRef.current?.applyOptions({ visible: false })
+    flowDepthSeriesRef.current?.applyOptions({ visible: false })
+    flowImbalanceSeriesRef.current?.applyOptions({ visible: false })
+  }
+
+  // Show specific flow series
+  const showFlowSeries = (indicator: string) => {
+    hideAllFlowSeries()
+    if (indicator === 'taker_volume') {
+      flowTakerBuySeriesRef.current?.applyOptions({ visible: true })
+      flowTakerSellSeriesRef.current?.applyOptions({ visible: true })
+    } else {
+      const seriesRef = getFlowSeriesRef(indicator)
+      if (seriesRef && 'current' in seriesRef && seriesRef.current) {
+        seriesRef.current.applyOptions({ visible: true })
+      }
+    }
+  }
 
   // 获取K线数据和指标
   const fetchKlineData = async (forceAllIndicators = false) => {
@@ -1201,6 +1491,167 @@ export default function TradingViewChart({
     }
   }, [selectedIndicators])
 
+  // Handle market flow indicator changes - similar to technical indicators
+  useEffect(() => {
+    if (!chartRef.current) {
+      console.log('[FlowPane] No chart ref, skipping')
+      return
+    }
+
+    const chart = chartRef.current
+    const hasFlowIndicators = selectedFlowIndicators.length > 0
+    console.log('[FlowPane] hasFlowIndicators:', hasFlowIndicators, 'flowPaneRef:', !!flowPaneRef.current)
+
+    if (hasFlowIndicators) {
+      // Create flow pane if not exists
+      if (!flowPaneRef.current) {
+        const flowPane = chart.addPane()
+        flowPane.setStretchFactor(1)
+        const labelPrimitive = createPaneLabel('Market Flow')
+        flowPane.attachPrimitive(labelPrimitive)
+        flowLabelRef.current = labelPrimitive
+        flowPaneRef.current = flowPane
+
+        // Pre-create all series (initially hidden)
+        // CVD - Line
+        flowCvdSeriesRef.current = flowPane.addSeries(LineSeries, {
+          color: FLOW_COLORS.cvd.line, lineWidth: 2, visible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        })
+        // Taker Volume - Dual Histogram
+        flowTakerBuySeriesRef.current = flowPane.addSeries(HistogramSeries, {
+          color: FLOW_COLORS.taker_volume.up, visible: false,
+          priceFormat: { type: 'volume' }
+        })
+        flowTakerSellSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+          color: FLOW_COLORS.taker_volume.down, visible: false,
+          priceFormat: { type: 'volume' }
+        })
+        // OI - Line
+        flowOiSeriesRef.current = flowPane.addSeries(LineSeries, {
+          color: FLOW_COLORS.oi.line, lineWidth: 2, visible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        })
+        // OI Delta - Histogram
+        flowOiDeltaSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+          color: FLOW_COLORS.oi_delta.line, visible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        })
+        // Funding - Line (values converted to bps, e.g., 0.000292% -> 2.92 bps)
+        flowFundingSeriesRef.current = flowPane.addSeries(LineSeries, {
+          color: FLOW_COLORS.funding.line, lineWidth: 2, visible: false,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        })
+        // Depth Ratio - Line
+        flowDepthSeriesRef.current = flowPane.addSeries(LineSeries, {
+          color: FLOW_COLORS.depth_ratio.line, lineWidth: 2, visible: false,
+          priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+        })
+        // Order Imbalance - Histogram
+        flowImbalanceSeriesRef.current = flowPane.addSeries(HistogramSeries, {
+          color: FLOW_COLORS.order_imbalance.line, visible: false,
+          priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+        })
+        // Update pane positions after flow pane created
+        updatePanePositions()
+      }
+
+      // Detect newly added indicators
+      const prevFlowIndicators = prevFlowIndicatorsRef.current
+      const newlyAdded = selectedFlowIndicators.filter(ind => !prevFlowIndicators.includes(ind))
+
+      // Auto-switch to newly added indicator
+      if (newlyAdded.length > 0) {
+        setActiveFlowIndicator(newlyAdded[newlyAdded.length - 1])
+      }
+      // Set default if no active indicator
+      else if (!activeFlowIndicator || !selectedFlowIndicators.includes(activeFlowIndicator)) {
+        setActiveFlowIndicator(selectedFlowIndicators[0])
+      }
+
+      // Update previous indicators ref
+      prevFlowIndicatorsRef.current = selectedFlowIndicators
+
+    } else {
+      // Remove flow pane if no indicators selected
+      console.log('[FlowPane] Removing pane, flowPaneRef:', !!flowPaneRef.current)
+      if (flowPaneRef.current) {
+        // Find the pane index before clearing refs
+        const panes = chart.panes()
+        const paneIndex = panes.indexOf(flowPaneRef.current)
+        console.log('[FlowPane] Pane index:', paneIndex, 'Total panes:', panes.length)
+
+        // Clear refs first to prevent any further operations
+        flowPaneRef.current = null
+        flowLabelRef.current = null
+        flowCvdSeriesRef.current = null
+        flowTakerBuySeriesRef.current = null
+        flowTakerSellSeriesRef.current = null
+        flowOiSeriesRef.current = null
+        flowOiDeltaSeriesRef.current = null
+        flowFundingSeriesRef.current = null
+        flowDepthSeriesRef.current = null
+        flowImbalanceSeriesRef.current = null
+
+        // Now remove the pane by index (removePane takes index, not pane object)
+        if (paneIndex > 0) {
+          try {
+            console.log('[FlowPane] Calling chart.removePane with index:', paneIndex)
+            chart.removePane(paneIndex)
+            console.log('[FlowPane] removePane succeeded')
+            // Update pane positions after flow pane removed
+            updatePanePositions()
+          } catch (e) {
+            console.warn('[FlowPane] Failed to remove flow pane:', e)
+          }
+        }
+        setActiveFlowIndicator(null)
+        setFlowDataCache({})
+        setFlowDataAvailableFrom(null)
+      }
+      prevFlowIndicatorsRef.current = []
+    }
+  }, [selectedFlowIndicators])
+
+  // Handle active flow indicator changes - show/hide series and fetch data
+  useEffect(() => {
+    if (!activeFlowIndicator || !flowPaneRef.current) return
+
+    // Show the active series
+    showFlowSeries(activeFlowIndicator)
+
+    // Update label
+    updateFlowPaneLabel(activeFlowIndicator)
+
+    // Fetch data if not cached
+    if (!flowDataCache[activeFlowIndicator]) {
+      fetchFlowData(activeFlowIndicator)
+    } else {
+      // Use cached data
+      updateFlowSeries(activeFlowIndicator, flowDataCache[activeFlowIndicator])
+    }
+  }, [activeFlowIndicator])
+
+  // Re-fetch flow data when symbol or period changes
+  useEffect(() => {
+    if (selectedFlowIndicators.length > 0 && flowPaneRef.current) {
+      // Clear all flow series data first (consistent with main chart behavior)
+      if (flowCvdSeriesRef.current) flowCvdSeriesRef.current.setData([])
+      if (flowTakerBuySeriesRef.current) flowTakerBuySeriesRef.current.setData([])
+      if (flowTakerSellSeriesRef.current) flowTakerSellSeriesRef.current.setData([])
+      if (flowOiSeriesRef.current) flowOiSeriesRef.current.setData([])
+      if (flowOiDeltaSeriesRef.current) flowOiDeltaSeriesRef.current.setData([])
+      if (flowFundingSeriesRef.current) flowFundingSeriesRef.current.setData([])
+      if (flowDepthSeriesRef.current) flowDepthSeriesRef.current.setData([])
+      if (flowImbalanceSeriesRef.current) flowImbalanceSeriesRef.current.setData([])
+      // Clear cache and re-fetch active indicator
+      setFlowDataCache({})
+      if (activeFlowIndicator) {
+        fetchFlowData(activeFlowIndicator)
+      }
+    }
+  }, [symbol, period])
+
   return (
     <div className="relative w-full h-full">
 
@@ -1209,32 +1660,61 @@ export default function TradingViewChart({
       <div ref={chartContainerRef} className="w-full h-full" />
 
 
-      {/* 指标子图切换器 */}
+      {/* 指标子图切换器 - positioned at indicator pane top-left */}
       {(() => {
         const subplotIndicators = selectedIndicators.filter(ind => ['RSI14', 'RSI7', 'MACD', 'ATR14', 'STOCH', 'OBV'].includes(ind))
-        if (subplotIndicators.length === 0) return null
+        // Always show selector when there are indicators (1 or more)
+        if (subplotIndicators.length === 0 || indicatorPaneTop === null) return null
 
         const currentActiveSubplot = activeSubplot || subplotIndicators[0]
 
         return (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-md p-2 border text-xs">
-            <span className="text-muted-foreground">{currentActiveSubplot}</span>
-            {subplotIndicators.length > 1 && (
-              <select
-                value={currentActiveSubplot}
-                onChange={(e) => setActiveSubplot(e.target.value)}
-                className="bg-transparent border-0 text-xs focus:outline-none cursor-pointer"
-              >
-                {subplotIndicators.map(indicator => (
-                  <option key={indicator} value={indicator}>
-                    {indicator}
-                  </option>
-                ))}
-              </select>
-            )}
+          <div
+            className="absolute left-2 z-10 flex items-center bg-background/80 backdrop-blur-sm rounded-md p-1 px-2 border text-xs"
+            style={{ top: indicatorPaneTop + 4 }}
+          >
+            <select
+              value={currentActiveSubplot}
+              onChange={(e) => setActiveSubplot(e.target.value)}
+              className="bg-transparent border-0 text-xs focus:outline-none cursor-pointer"
+              disabled={subplotIndicators.length === 1}
+            >
+              {subplotIndicators.map(indicator => (
+                <option key={indicator} value={indicator}>
+                  {indicator}
+                </option>
+              ))}
+            </select>
           </div>
         )
       })()}
+
+      {/* Market Flow indicator selector - positioned at flow pane top-left */}
+      {/* Always show selector when there are flow indicators (1 or more) */}
+      {selectedFlowIndicators.length > 0 && activeFlowIndicator && flowPaneTop !== null && (
+        <div
+          className="absolute left-2 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-md p-1 px-2 border text-xs"
+          style={{ top: flowPaneTop + 4 }}
+        >
+          <select
+            value={activeFlowIndicator}
+            onChange={(e) => setActiveFlowIndicator(e.target.value)}
+            className="bg-transparent border-0 text-xs focus:outline-none cursor-pointer text-cyan-400"
+            disabled={selectedFlowIndicators.length === 1}
+          >
+            {selectedFlowIndicators.map(indicator => (
+              <option key={indicator} value={indicator}>
+                {FLOW_LABELS[indicator]}
+              </option>
+            ))}
+          </select>
+          {flowDataAvailableFrom && (
+            <span className="text-muted-foreground">
+              from {new Date(flowDataAvailableFrom).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 自定义水印 */}
       <div className="absolute bottom-2 right-2 text-xs text-muted-foreground/30 pointer-events-none select-none">

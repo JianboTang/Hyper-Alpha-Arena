@@ -94,6 +94,21 @@ def initialize_services():
         asyncio.create_task(realtime_collector.start())
         logger.info("K-line realtime collection service started (1-minute interval)")
 
+        # Start market flow data collector (trades, orderbook, OI/funding)
+        from services.market_flow_collector import market_flow_collector, cleanup_old_market_flow_data
+        print("Starting market flow collector...")
+        market_flow_collector.start()
+        print("Market flow collector started")
+        logger.info("Market flow collector started (15-second aggregation)")
+
+        # Add market flow data cleanup task (every 6 hours)
+        task_scheduler.add_interval_task(
+            task_func=cleanup_old_market_flow_data,
+            interval_seconds=6 * 3600,  # 6 hours
+            task_id="market_flow_data_cleanup"
+        )
+        logger.info("Market flow data cleanup task started (6-hour interval, 30-day retention)")
+
         logger.info("All services initialized successfully")
 
     except Exception as e:
@@ -116,6 +131,10 @@ def shutdown_services():
 
         # Stop K-line realtime collector
         asyncio.create_task(realtime_collector.stop())
+
+        # Stop market flow collector
+        from services.market_flow_collector import market_flow_collector
+        market_flow_collector.stop()
 
         stop_scheduler()
         logger.info("All services have been shut down")
