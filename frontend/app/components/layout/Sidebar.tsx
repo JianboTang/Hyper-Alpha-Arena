@@ -30,6 +30,13 @@ const PremiumIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 
+// Signal icon component (custom SVG)
+const SignalIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1024 483.2c-6.4-124.8-60.8-243.2-150.4-332.8C784 60.8 665.6 9.6 540.8 0h-57.6C358.4 9.6 240 60.8 150.4 150.4 60.8 240 9.6 358.4 0 483.2v57.6c6.4 124.8 60.8 243.2 150.4 332.8 89.6 89.6 208 140.8 332.8 150.4h57.6c124.8-6.4 243.2-60.8 332.8-150.4 89.6-89.6 140.8-208 150.4-332.8v-57.6zM396.8 262.4c28.8-12.8 57.6-22.4 86.4-25.6v124.8c-60.8 12.8-108.8 60.8-121.6 121.6H236.8c3.2-41.6 19.2-83.2 41.6-118.4 12.8 6.4 25.6 9.6 38.4 9.6 48 0 83.2-38.4 83.2-83.2 0-12.8 0-19.2-3.2-28.8zM230.4 288c0 12.8 3.2 22.4 6.4 35.2-32 48-51.2 102.4-57.6 160H57.6C70.4 256 256 70.4 483.2 57.6v124.8c-44.8 3.2-86.4 16-124.8 35.2-12.8-6.4-28.8-12.8-44.8-12.8-44.8 0-83.2 38.4-83.2 83.2z m131.2 252.8c12.8 60.8 60.8 108.8 121.6 121.6v124.8c-128-12.8-233.6-115.2-246.4-246.4h124.8z m121.6 300.8v124.8C256 953.6 70.4 768 57.6 540.8h124.8c12.8 160 140.8 288 300.8 300.8z m0-300.8v64c-32-9.6-54.4-35.2-64-64h64z m0-121.6v64h-64c9.6-32 32-54.4 64-64z m57.6 64v-64c32 9.6 54.4 35.2 64 64h-64z m188.8 57.6c6.4 22.4 25.6 38.4 44.8 48-32 108.8-124.8 185.6-236.8 198.4v-124.8c60.8-12.8 108.8-60.8 121.6-121.6h70.4z m3.2-57.6h-70.4c-12.8-60.8-60.8-108.8-121.6-121.6V236.8c112 12.8 204.8 89.6 236.8 198.4-22.4 9.6-38.4 25.6-44.8 48z m-192 121.6v-64h64c-9.6 32-32 54.4-64 64z m0 236.8c70.4-6.4 134.4-32 185.6-76.8 25.6-22.4 51.2-51.2 67.2-80 19.2-28.8 32-60.8 38.4-92.8 25.6-6.4 48-28.8 54.4-51.2h76.8C953.6 768 768 953.6 540.8 966.4v-124.8z m256-502.4c-19.2-28.8-41.6-57.6-67.2-80-54.4-44.8-118.4-70.4-185.6-76.8V57.6c224 12.8 409.6 198.4 422.4 425.6h-76.8c-9.6-25.6-28.8-44.8-54.4-51.2-9.6-35.2-22.4-64-38.4-92.8z"/>
+  </svg>
+)
+
 const CommunityIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" fill="none">
     <path d="M512 512m-512 0a512 512 0 1 0 1024 0 512 512 0 1 0-1024 0Z" fill="#7AA5DA" />
@@ -54,6 +61,7 @@ export default function Sidebar({ currentPage = 'comprehensive', onPageChange, o
     { label: 'Dashboard', page: 'comprehensive', icon: BarChart3 },
     { label: 'AI Trader', page: 'trader-management', icon: AITraderIcon },
     { label: 'Prompts', page: 'prompt-management', icon: NotebookPen },
+    { label: 'Signals', page: 'signal-management', icon: SignalIcon },
     { label: 'Manual Trading', page: 'hyperliquid', icon: Coins },
     { label: 'K-Lines', page: 'klines', icon: KLinesIcon },
     { label: 'Premium', page: 'premium-features', icon: PremiumIcon },

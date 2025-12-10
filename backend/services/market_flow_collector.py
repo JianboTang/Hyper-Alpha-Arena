@@ -497,6 +497,9 @@ class MarketFlowCollector:
                 db.commit()
                 logger.debug(f"Flushed market flow data for {len(self.subscribed_symbols)} symbols")
 
+                # Run signal detection after data flush
+                self._run_signal_detection()
+
             except Exception as e:
                 db.rollback()
                 logger.error(f"Failed to flush market flow data: {e}")
@@ -505,6 +508,26 @@ class MarketFlowCollector:
 
         except Exception as e:
             logger.error(f"Database error in flush: {e}")
+
+    def _run_signal_detection(self):
+        """Run signal detection for all subscribed symbols"""
+        try:
+            from services.signal_detection_service import signal_detection_service
+
+            for symbol in self.subscribed_symbols:
+                # Build market data context for signal detection
+                market_data = {
+                    "asset_ctx": self.latest_asset_ctx.get(symbol, {}),
+                    "orderbook": self.latest_orderbook.get(symbol, {}),
+                }
+
+                # Detect signals
+                triggered = signal_detection_service.detect_signals(symbol, market_data)
+                if triggered:
+                    logger.info(f"Signals triggered for {symbol}: {[s['signal_name'] for s in triggered]}")
+
+        except Exception as e:
+            logger.error(f"Error in signal detection: {e}", exc_info=True)
 
     def _flush_trades(self, db, symbol: str, timestamp_ms: int):
         """Flush trade buffer for a symbol"""

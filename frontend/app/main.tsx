@@ -27,6 +27,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import ComprehensiveView from '@/components/portfolio/ComprehensiveView'
 import SystemLogs from '@/components/layout/SystemLogs'
 import PromptManager from '@/components/prompt/PromptManager'
+import SignalManager from '@/components/signal/SignalManager'
 import TraderManagement from '@/components/trader/TraderManagement'
 import { HyperliquidPage } from '@/components/hyperliquid'
 import HyperliquidView from '@/components/hyperliquid/HyperliquidView'
@@ -72,6 +73,7 @@ const PAGE_TITLES: Record<string, string> = {
   comprehensive: 'Hyper Alpha Arena',
   'system-logs': 'System Logs',
   'prompt-management': 'Prompt Templates',
+  'signal-management': 'Signal System',
   'trader-management': 'AI Trader Management',
   'hyperliquid': 'Hyperliquid Trading',
   'klines': 'K-Line Charts',
@@ -641,6 +643,10 @@ function App() {
 
         {currentPage === 'prompt-management' && (
           <PromptManager />
+        )}
+
+        {currentPage === 'signal-management' && (
+          <SignalManager />
         )}
 
         {currentPage === 'trader-management' && (

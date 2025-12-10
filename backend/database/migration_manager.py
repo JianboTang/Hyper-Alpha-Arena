@@ -22,6 +22,7 @@ MIGRATIONS = [
     "add_prompt_template_fields.py",
     "add_ai_prompt_chat.py",
     "fix_timestamp_bigint.py",
+    "create_signal_system_tables.py",
 ]
 
 def check_migration_table():
