@@ -59,6 +59,10 @@ Hyper Alpha Arena is a production-ready AI trading platform where Large Language
   - Volume: OBV, VWAP
   - Support/Resistance: Pivot Points, Fibonacci Retracement
 - **Real-time Market Data**: Live cryptocurrency price feeds from multiple exchanges via ccxt
+- **Signal-Triggered Trading**: Define market conditions that activate AI analysis
+  - Create custom signals: OI changes, funding rate spikes, price breakouts
+  - AI Signal Generator: Natural language to signal configuration
+  - Combine with scheduled triggers for comprehensive coverage
 - **AI Trader Management**: Create and manage multiple AI trading agents with independent configurations
 
 ### Hyperliquid Trading Features
@@ -220,6 +224,13 @@ These are suggestions based on best practices. Many users have different risk pr
 - Monitoring margin usage helps avoid unexpected liquidations
 - Using dedicated trading wallets (separate from main holdings) is a common security practice
 - Some users prefer gradual scaling rather than maximum leverage from the start
+
+### Optional: Signal-Triggered Trading
+
+After familiarizing yourself with scheduled trading, explore signal-based triggers:
+- Navigate to **Signal Management** to create custom market condition signals
+- Use **AI Signal Generator** to describe conditions in natural language
+- Bind signal pools to AI Traders for condition-based activation
 
 ## Supported Models
 
