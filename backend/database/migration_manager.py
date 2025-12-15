@@ -104,12 +104,7 @@ def run_migration(migration_file: str):
     except Exception as e:
         logger.error(f"Migration {migration_file} failed: {e}")
         logger.warning(f"Continuing with remaining migrations despite error in {migration_file}")
-        # Mark as executed even if it failed, since idempotent migrations
-        # may fail because they're already applied
-        try:
-            mark_migration_executed(migration_file)
-        except:
-            pass
+        # DO NOT mark failed migrations as executed - they need to be retried
         return False
 
 def run_pending_migrations():
