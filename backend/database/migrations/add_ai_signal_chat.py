@@ -10,7 +10,7 @@ from sqlalchemy import text
 from database.connection import engine
 
 
-def migrate():
+def upgrade():
     """Run the migration"""
     with engine.connect() as conn:
         # Create ai_signal_conversations table
@@ -62,4 +62,4 @@ def rollback():
 
 
 if __name__ == "__main__":
-    migrate()
+    upgrade()

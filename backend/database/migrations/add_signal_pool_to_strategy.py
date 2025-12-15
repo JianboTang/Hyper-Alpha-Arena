@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, text
 from database.connection import DATABASE_URL
 
 
-def migrate():
+def upgrade():
     """Add signal_pool_id column to account_strategy_configs"""
     engine = create_engine(DATABASE_URL)
 
@@ -63,4 +63,4 @@ def rollback():
 
 
 if __name__ == "__main__":
-    migrate()
+    upgrade()
