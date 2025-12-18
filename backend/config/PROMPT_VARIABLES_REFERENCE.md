@@ -194,9 +194,13 @@ Cumulative: +$8.70M
 **TAKER (Taker Volume)**
 ```
 Taker Buy: +$5.20M | Taker Sell: +$2.86M
-Buy/Sell Ratio: 1.82
-Ratio last 5: 0.95, 1.12, 1.45, 1.23, 1.82
+Buy/Sell Ratio: 1.82x (log: +0.60)
+Log Ratio last 5: -0.05, +0.11, +0.37, +0.21, +0.60
 ```
+Note: Log ratio = ln(buy/sell). Positive = buyers dominate, negative = sellers dominate.
+- +0.69 = buyers 2x sellers
+- 0 = balanced
+- -0.69 = sellers 2x buyers
 
 **OI (Open Interest)**
 ```

@@ -258,31 +258,36 @@ class SignalBacktestService:
         triggers = []
         was_active = False
 
+        import math
+        # Convert user's ratio threshold to log threshold
+        log_threshold = math.log(max(ratio_threshold, 1.01))
+
         for check_time in check_points:
             # Calculate taker data at this check point
             taker_data = self._calc_taker_data_at_time(raw_data, check_time, interval_ms)
             if not taker_data:
                 continue
 
-            ratio = taker_data["ratio"]
+            log_ratio = taker_data["log_ratio"]
+            ratio = taker_data["ratio"]  # Original ratio for display
             total = taker_data["volume"]
 
             if total < volume_threshold:
                 was_active = False
                 continue
 
-            # Check condition
+            # Check condition using log ratio (symmetric around 0)
             condition_met = False
             actual_dir = None
 
-            if direction == "buy" and ratio >= ratio_threshold:
+            if direction == "buy" and log_ratio >= log_threshold:
                 condition_met, actual_dir = True, "buy"
-            elif direction == "sell" and ratio <= 1 / ratio_threshold:
+            elif direction == "sell" and log_ratio <= -log_threshold:
                 condition_met, actual_dir = True, "sell"
             elif direction == "any":
-                if ratio >= ratio_threshold:
+                if log_ratio >= log_threshold:
                     condition_met, actual_dir = True, "buy"
-                elif ratio <= 1 / ratio_threshold:
+                elif log_ratio <= -log_threshold:
                     condition_met, actual_dir = True, "sell"
 
             # Edge detection: only trigger on False -> True
@@ -290,7 +295,8 @@ class SignalBacktestService:
                 triggers.append({
                     "timestamp": check_time,
                     "direction": actual_dir,
-                    "ratio": ratio,
+                    "log_ratio": log_ratio,
+                    "ratio": ratio,  # Original ratio for display
                     "ratio_threshold": ratio_threshold,
                     "volume": total,
                     "volume_threshold": volume_threshold,
@@ -608,7 +614,14 @@ class SignalBacktestService:
     def _compute_taker_ratio_buckets(
         self, db, symbol, interval_ms, start_time_ms, current_time_ms
     ) -> Dict[int, float]:
-        """Compute taker buy/sell ratio for each bucket."""
+        """Compute taker buy/sell log ratio for each bucket.
+
+        Uses ln(buy/sell) for symmetric ratio around 0:
+        - ln(2.0) = +0.69 (buyers 2x sellers)
+        - ln(1.0) = 0 (balanced)
+        - ln(0.5) = -0.69 (sellers 2x buyers)
+        """
+        import math
         from services.market_flow_indicators import floor_timestamp
         from database.models import MarketTradesAggregated
 
@@ -635,9 +648,10 @@ class SignalBacktestService:
 
         result = {}
         for ts in buckets:
+            buy = buckets[ts]["buy"]
             sell = buckets[ts]["sell"]
-            if sell > 0:
-                result[ts] = buckets[ts]["buy"] / sell
+            if buy > 0 and sell > 0:
+                result[ts] = math.log(buy / sell)  # Log transformation
 
         return result
 
@@ -703,11 +717,16 @@ class SignalBacktestService:
 
         IMPORTANT: This method iterates over MARKET FLOW DATA (buckets), not K-lines.
         K-lines are only used as a visual background.
+        Uses log(buy/sell) for symmetric ratio detection.
         """
+        import math
         condition = signal_def.get("trigger_condition", {})
         direction = condition.get("direction", "any")
         ratio_threshold = condition.get("ratio_threshold", 1.5)
         volume_threshold = condition.get("volume_threshold", 0)
+
+        # Convert user's ratio threshold to log threshold
+        log_threshold = math.log(max(ratio_threshold, 1.01))
 
         interval_ms = TIMEFRAME_MS.get(time_window, 300000)
 
@@ -736,7 +755,8 @@ class SignalBacktestService:
             if bucket_ts < kline_min_ts or bucket_ts > kline_max_ts:
                 continue
 
-            ratio = data["ratio"]
+            log_ratio = data["log_ratio"]
+            ratio = data["ratio"]  # Original ratio for display
             total = data["volume"]
 
             if total < volume_threshold:
@@ -745,21 +765,22 @@ class SignalBacktestService:
             triggered = False
             actual_dir = None
 
-            if direction == "buy" and ratio >= ratio_threshold:
+            if direction == "buy" and log_ratio >= log_threshold:
                 triggered, actual_dir = True, "buy"
-            elif direction == "sell" and ratio <= 1 / ratio_threshold:
+            elif direction == "sell" and log_ratio <= -log_threshold:
                 triggered, actual_dir = True, "sell"
             elif direction == "any":
-                if ratio >= ratio_threshold:
+                if log_ratio >= log_threshold:
                     triggered, actual_dir = True, "buy"
-                elif ratio <= 1 / ratio_threshold:
+                elif log_ratio <= -log_threshold:
                     triggered, actual_dir = True, "sell"
 
             if triggered:
                 triggers.append({
                     "timestamp": bucket_ts,
                     "direction": actual_dir,
-                    "ratio": ratio,
+                    "log_ratio": log_ratio,
+                    "ratio": ratio,  # Original ratio for display
                     "ratio_threshold": ratio_threshold,
                     "volume": total,
                     "volume_threshold": volume_threshold,
@@ -771,7 +792,11 @@ class SignalBacktestService:
     def _compute_taker_volume_buckets(
         self, db, symbol, interval_ms
     ) -> Dict[int, Dict]:
-        """Compute taker volume data (ratio and volume) for each bucket."""
+        """Compute taker volume data (log_ratio and volume) for each bucket.
+
+        Uses ln(buy/sell) for symmetric ratio around 0.
+        """
+        import math
         from services.market_flow_indicators import floor_timestamp
         from database.models import MarketTradesAggregated
         from datetime import datetime
@@ -800,14 +825,15 @@ class SignalBacktestService:
             buckets[bucket_ts]["buy"] += float(buy or 0)
             buckets[bucket_ts]["sell"] += float(sell or 0)
 
-        # Calculate ratio and volume for each bucket
+        # Calculate log ratio and volume for each bucket
         result = {}
         for ts, data in buckets.items():
             buy, sell = data["buy"], data["sell"]
             total = buy + sell
-            if sell > 0 and total > 0:
+            if buy > 0 and sell > 0 and total > 0:
                 result[ts] = {
-                    "ratio": buy / sell,
+                    "log_ratio": math.log(buy / sell),
+                    "ratio": buy / sell,  # Original ratio for display
                     "volume": total
                 }
 
@@ -1151,20 +1177,32 @@ class SignalBacktestService:
         return sorted(set(timestamps))
 
     def _calculate_indicator_at_time(
-        self, raw_data: List[tuple], metric: str, check_time: int, interval_ms: int
+        self, raw_data: List[tuple], metric: str, check_time: int, interval_ms: int,
+        timestamps_index: List[int] = None
     ) -> Optional[float]:
         """
         Calculate indicator value at a specific check time.
         Simulates real-time detection: only uses data up to check_time.
+
+        Performance optimization: uses binary search instead of linear filtering.
+        If timestamps_index is provided, uses it for O(log n) lookup.
         """
-        from services.market_flow_indicators import floor_timestamp
+        import bisect
 
         # Same lookback as real-time detection
         lookback_ms = interval_ms * 10
         start_time = check_time - lookback_ms
 
-        # Filter data: start_time <= timestamp <= check_time
-        relevant_data = [r for r in raw_data if start_time <= r[0] <= check_time]
+        # Use binary search for O(log n) instead of O(n) linear filter
+        if timestamps_index is not None:
+            # Binary search for range [start_time, check_time]
+            left_idx = bisect.bisect_left(timestamps_index, start_time)
+            right_idx = bisect.bisect_right(timestamps_index, check_time)
+            relevant_data = raw_data[left_idx:right_idx]
+        else:
+            # Fallback to linear filter for backward compatibility
+            relevant_data = [r for r in raw_data if start_time <= r[0] <= check_time]
+
         if not relevant_data:
             return None
 
@@ -1257,7 +1295,11 @@ class SignalBacktestService:
         return None
 
     def _calc_taker_ratio_at_time(self, data: List[tuple], interval_ms: int) -> Optional[float]:
-        """Calculate taker buy/sell ratio at a specific time."""
+        """Calculate taker buy/sell log ratio at a specific time.
+
+        Uses ln(buy/sell) for symmetric ratio around 0.
+        """
+        import math
         from services.market_flow_indicators import floor_timestamp
 
         buckets = {}
@@ -1273,14 +1315,18 @@ class SignalBacktestService:
 
         sorted_times = sorted(buckets.keys())
         last = buckets[sorted_times[-1]]
-        if last["sell"] > 0:
-            return last["buy"] / last["sell"]
+        if last["buy"] > 0 and last["sell"] > 0:
+            return math.log(last["buy"] / last["sell"])
         return None
 
     def _calc_taker_data_at_time(
         self, raw_data: List[tuple], check_time: int, interval_ms: int
     ) -> Optional[Dict]:
-        """Calculate taker volume data (ratio and volume) at a specific time."""
+        """Calculate taker volume data (log_ratio and volume) at a specific time.
+
+        Uses ln(buy/sell) for symmetric ratio around 0.
+        """
+        import math
         from services.market_flow_indicators import floor_timestamp
 
         lookback_ms = interval_ms * 10
@@ -1306,8 +1352,8 @@ class SignalBacktestService:
         buy, sell = last["buy"], last["sell"]
         total = buy + sell
 
-        if sell > 0 and total > 0:
-            return {"ratio": buy / sell, "volume": total}
+        if buy > 0 and sell > 0 and total > 0:
+            return {"log_ratio": math.log(buy / sell), "ratio": buy / sell, "volume": total}
         return None
 
     def _evaluate_condition(self, value: float, operator: str, threshold: float) -> bool:

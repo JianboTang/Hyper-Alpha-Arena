@@ -595,18 +595,24 @@ class SignalDetectionService:
     ) -> Optional[dict]:
         """
         Check taker_volume composite signal trigger.
+        Uses log(buy/sell) for symmetric ratio detection.
         Condition format:
         {
             "metric": "taker_volume",
             "direction": "buy" | "sell" | "any",
-            "ratio_threshold": 1.5,
+            "ratio_threshold": 1.5,  # User sets multiplier, internally converted to log
             "volume_threshold": 50000,
             "time_window": "5m"
         }
         """
+        import math
         direction = condition.get("direction", "any")
         ratio_threshold = condition.get("ratio_threshold", 1.5)
         volume_threshold = condition.get("volume_threshold", 0)
+
+        # Convert user's ratio threshold to log threshold
+        # e.g., 1.5 -> log(1.5) = 0.405, so we check if |log_ratio| >= 0.405
+        log_threshold = math.log(max(ratio_threshold, 1.01))  # Prevent log(1) = 0
 
         # Get taker data from DB
         from database.connection import SessionLocal
@@ -637,32 +643,32 @@ class SignalDetectionService:
         if total < volume_threshold:
             return None
 
-        # Check direction and ratio
-        # Ratio = buy/sell (unified formula)
-        # >1 means buyers dominate, <1 means sellers dominate
+        # Check direction and log ratio
+        # Log ratio = ln(buy/sell), symmetric around 0
+        # >0 means buyers dominate, <0 means sellers dominate
         condition_met = False
         actual_direction = None
-        actual_ratio = None
+        log_ratio = None
 
-        if sell > 0:
-            actual_ratio = buy / sell  # Unified formula
+        if buy > 0 and sell > 0:
+            log_ratio = math.log(buy / sell)
 
             if direction == "buy":
-                # Buy dominant: ratio >= threshold (e.g., 1.5 means buy is 1.5x of sell)
-                if actual_ratio >= ratio_threshold:
+                # Buy dominant: log_ratio >= log_threshold
+                if log_ratio >= log_threshold:
                     condition_met = True
                     actual_direction = "buy"
             elif direction == "sell":
-                # Sell dominant: ratio <= 1/threshold (e.g., threshold=1.5 means sell is 1.5x of buy)
-                if actual_ratio <= 1 / ratio_threshold:
+                # Sell dominant: log_ratio <= -log_threshold (symmetric)
+                if log_ratio <= -log_threshold:
                     condition_met = True
                     actual_direction = "sell"
             elif direction == "any":
-                # Either direction dominant
-                if actual_ratio >= ratio_threshold:
+                # Either direction dominant (using abs for symmetry)
+                if log_ratio >= log_threshold:
                     condition_met = True
                     actual_direction = "buy"
-                elif actual_ratio <= 1 / ratio_threshold:
+                elif log_ratio <= -log_threshold:
                     condition_met = True
                     actual_direction = "sell"
 
@@ -675,10 +681,10 @@ class SignalDetectionService:
         should_trigger = condition_met and not state.is_active
 
         state.is_active = condition_met
-        state.last_value = actual_ratio
+        state.last_value = log_ratio
         state.last_check_time = time.time()
 
-        if should_trigger and actual_direction and actual_ratio:
+        if should_trigger and actual_direction and log_ratio is not None:
             trigger_result = {
                 "signal_id": signal_id,
                 "signal_name": signal_def.get("signal_name"),
@@ -691,7 +697,8 @@ class SignalDetectionService:
                 "buy": buy,
                 "sell": sell,
                 "total": total,
-                "ratio": actual_ratio,
+                "log_ratio": log_ratio,  # Log transformed ratio
+                "ratio": buy / sell,  # Original ratio for display
                 "ratio_threshold": ratio_threshold,
                 "volume_threshold": volume_threshold,
             }

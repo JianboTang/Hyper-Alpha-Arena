@@ -38,10 +38,15 @@ interface SignalConfig {
   // For signal pool
   logic?: 'AND' | 'OR'
   signals?: Array<{
-    metric: string
-    operator: string
-    threshold: number
+    metric?: string      // frontend field name
+    indicator?: string   // AI output field name (same as metric)
+    operator?: string
+    threshold?: number
     time_window?: string
+    // taker_volume composite signal fields
+    direction?: string
+    ratio_threshold?: number
+    volume_threshold?: number
   }>
 }
 
@@ -733,7 +738,15 @@ function SignalPoolCard({
   isCreated?: boolean
 }) {
   const signals = config.signals || []
-  const isValid = signals.length > 0 && signals.every(s => s.metric && s.operator && s.threshold !== undefined)
+  // Validate signals - support both 'metric' and 'indicator' field names (AI uses 'indicator')
+  // taker_volume uses direction/ratio_threshold/volume_threshold instead of operator/threshold
+  const isValid = signals.length > 0 && signals.every(s => {
+    const metricName = s.metric || s.indicator  // AI outputs 'indicator', frontend uses 'metric'
+    if (metricName === 'taker_volume') {
+      return s.direction && s.ratio_threshold !== undefined && s.volume_threshold !== undefined
+    }
+    return metricName && s.operator && s.threshold !== undefined
+  })
 
   return (
     <div className={`rounded-lg border bg-card p-4 ${!isValid ? 'border-destructive/50' : 'border-primary/50'}`}>
@@ -754,15 +767,24 @@ function SignalPoolCard({
           {signals.length} Signal{signals.length > 1 ? 's' : ''} Combined with {config.logic || 'AND'}:
         </div>
         <div className="space-y-1">
-          {signals.map((sig, idx) => (
-            <div key={idx} className="text-xs flex items-center gap-2 bg-background/50 rounded px-2 py-1">
-              <span className="font-medium">{getMetricLabel(sig.metric)}</span>
-              <span className="text-muted-foreground">
-                {getOperatorLabel(sig.operator)} {sig.threshold}
-              </span>
-              <span className="text-muted-foreground">({sig.time_window || '5m'})</span>
-            </div>
-          ))}
+          {signals.map((sig, idx) => {
+            const metricName = sig.metric || sig.indicator  // AI outputs 'indicator', frontend uses 'metric'
+            return (
+              <div key={idx} className="text-xs flex items-center gap-2 bg-background/50 rounded px-2 py-1">
+                <span className="font-medium">{getMetricLabel(metricName || '')}</span>
+                {metricName === 'taker_volume' ? (
+                  <span className="text-muted-foreground">
+                    {sig.direction?.toUpperCase()} ≥{sig.ratio_threshold}x, ≥${((sig.volume_threshold || 0) / 1000000).toFixed(1)}M
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {getOperatorLabel(sig.operator || '')} {sig.threshold}
+                  </span>
+                )}
+                <span className="text-muted-foreground">({sig.time_window || '5m'})</span>
+              </div>
+            )
+          })}
         </div>
       </div>
       <div className="flex gap-2">

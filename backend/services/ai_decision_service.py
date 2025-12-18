@@ -69,10 +69,11 @@ def _get_metric_unit(metric: str) -> str:
     # Percentage-based metrics
     percent_metrics = {
         "oi_delta", "price_change_percent", "volume_change_percent",
-        "funding", "funding_rate", "taker_ratio"
+        "funding", "funding_rate"
     }
     # Ratio-based metrics (no unit, just a number)
-    ratio_metrics = {"depth_ratio", "order_imbalance", "imbalance"}
+    # taker_ratio is now log-transformed, symmetric around 0
+    ratio_metrics = {"depth_ratio", "order_imbalance", "imbalance", "taker_ratio"}
     # USD-based metrics
     usd_metrics = {"oi", "cvd", "volume", "taker_volume"}
 
@@ -883,24 +884,49 @@ def _build_prompt_context(
                     description = sig.get("description")
                     metric = sig.get("metric", "N/A")
                     time_window = sig.get("time_window", "N/A")
-                    operator = sig.get("operator", "N/A")
-                    threshold = sig.get("threshold", "N/A")
-                    # Support both "current_value" (from signal_detection_service) and "actual_value" (fallback)
-                    actual_value = sig.get("current_value") or sig.get("actual_value", "N/A")
-
-                    # Format metric with unit based on metric type
-                    unit = _get_metric_unit(metric)
-                    metric_display = f"{metric} ({unit})" if unit else metric
-                    threshold_display = f"{threshold}{unit}" if unit else str(threshold)
-                    value_display = f"{actual_value:.4f}{unit}" if isinstance(actual_value, (int, float)) and unit else str(actual_value)
 
                     lines.append(f"  - name: {sig_name}")
                     if description:
                         lines.append(f"    description: {description}")
-                    lines.append(f"    metric: {metric_display}")
-                    lines.append(f"    time_window: {time_window}")
-                    lines.append(f"    condition: {operator} {threshold_display}")
-                    lines.append(f"    current_value: {value_display}")
+
+                    # Special handling for taker_volume composite signal
+                    if metric == "taker_volume":
+                        direction = sig.get("actual_direction") or sig.get("direction", "N/A")
+                        buy = sig.get("buy", 0)
+                        sell = sig.get("sell", 0)
+                        ratio = sig.get("ratio", 0)
+                        ratio_threshold = sig.get("ratio_threshold", 1.5)
+                        volume_threshold = sig.get("volume_threshold", 0)
+                        # Calculate dominant side multiplier for clarity
+                        if direction == "buy" and ratio > 0:
+                            multiplier = ratio
+                            dominant = "buyers"
+                        elif direction == "sell" and ratio > 0:
+                            multiplier = 1 / ratio if ratio > 0 else 0
+                            dominant = "sellers"
+                        else:
+                            multiplier = ratio
+                            dominant = "N/A"
+                        lines.append(f"    metric: taker_volume")
+                        lines.append(f"    direction: {direction}")
+                        lines.append(f"    taker_buy: ${buy/1e6:.2f}M")
+                        lines.append(f"    taker_sell: ${sell/1e6:.2f}M")
+                        lines.append(f"    dominant: {dominant} {multiplier:.2f}x (threshold: {ratio_threshold}x)")
+                    else:
+                        # Standard single-value signal
+                        operator = sig.get("operator", "N/A")
+                        threshold = sig.get("threshold", "N/A")
+                        actual_value = sig.get("current_value") or sig.get("actual_value", "N/A")
+
+                        unit = _get_metric_unit(metric)
+                        metric_display = f"{metric} ({unit})" if unit else metric
+                        threshold_display = f"{threshold}{unit}" if unit else str(threshold)
+                        value_display = f"{actual_value:.4f}{unit}" if isinstance(actual_value, (int, float)) and unit else str(actual_value)
+
+                        lines.append(f"    metric: {metric_display}")
+                        lines.append(f"    time_window: {time_window}")
+                        lines.append(f"    condition: {operator} {threshold_display}")
+                        lines.append(f"    current_value: {value_display}")
         elif trigger_type == "scheduled":
             interval = trigger_context.get("trigger_interval", "N/A")
             lines.append(f"trigger_interval: {interval} minutes")

@@ -715,21 +715,42 @@ def create_pool_from_config(
             # Generate signal name if not provided
             sig_name = sig.get("name") or f"{request.name}_{i+1}"
 
-            # Build trigger condition
-            trigger_condition = {
-                "metric": sig.get("metric") or sig.get("indicator"),
-                "operator": sig.get("operator"),
-                "threshold": sig.get("threshold"),
-                "time_window": sig.get("time_window")
-            }
+            # Build trigger condition - handle taker_volume composite signal specially
+            metric_name = sig.get("metric") or sig.get("indicator")
 
-            # Validate required fields
-            if not all([trigger_condition["metric"], trigger_condition["operator"],
-                       trigger_condition["threshold"] is not None, trigger_condition["time_window"]]):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Signal {i+1} missing required fields (metric, operator, threshold, time_window)"
-                )
+            if metric_name == "taker_volume":
+                # taker_volume uses direction/ratio_threshold/volume_threshold instead of operator/threshold
+                trigger_condition = {
+                    "metric": metric_name,
+                    "direction": sig.get("direction"),
+                    "ratio_threshold": sig.get("ratio_threshold"),
+                    "volume_threshold": sig.get("volume_threshold"),
+                    "time_window": sig.get("time_window")
+                }
+                # Validate taker_volume required fields
+                if not all([trigger_condition["metric"], trigger_condition["direction"],
+                           trigger_condition["ratio_threshold"] is not None,
+                           trigger_condition["volume_threshold"] is not None,
+                           trigger_condition["time_window"]]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Signal {i+1} (taker_volume) missing required fields (direction, ratio_threshold, volume_threshold, time_window)"
+                    )
+            else:
+                # Standard signal with operator/threshold
+                trigger_condition = {
+                    "metric": metric_name,
+                    "operator": sig.get("operator"),
+                    "threshold": sig.get("threshold"),
+                    "time_window": sig.get("time_window")
+                }
+                # Validate standard signal required fields
+                if not all([trigger_condition["metric"], trigger_condition["operator"],
+                           trigger_condition["threshold"] is not None, trigger_condition["time_window"]]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Signal {i+1} missing required fields (metric, operator, threshold, time_window)"
+                    )
 
             # Create signal
             result = db.execute(text("""

@@ -73,10 +73,12 @@ You have exactly 3 tools. Use them efficiently:
 - cvd: Cumulative Volume Delta (buying/selling pressure)
 - depth_ratio: Bid/Ask depth ratio (orderbook imbalance)
 - order_imbalance: Normalized imbalance -1 to +1 (real-time pressure)
-- taker_buy_ratio: Taker buy/sell volume ratio (aggressive trading)
+- taker_buy_ratio: Log of taker buy/sell ratio, ln(buy/sell). >0=buyers dominate, <0=sellers dominate. Symmetric around 0.
+- taker_volume: **COMPOSITE INDICATOR** - Detects when one side dominates with significant volume. Requires: direction (buy/sell/any), ratio_threshold (multiplier, e.g., 1.5 = 50% more), volume_threshold (min total volume in USD).
 
-## OPERATORS
+## OPERATORS (for standard indicators)
 - greater_than, less_than, greater_than_or_equal, less_than_or_equal, abs_greater_than
+- NOTE: taker_volume does NOT use operators - it uses direction + ratio_threshold + volume_threshold
 
 ## TIME WINDOWS
 - 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h
@@ -114,6 +116,25 @@ Use this format when you tested combinations with `predict_signal_combination`:
 }
 ```
 
+### Option 3: taker_volume Composite Signal (special format)
+```signal-config
+{
+  "name": "BTC_TAKER_BUY_SURGE",
+  "symbol": "BTC",
+  "description": "Detects strong buyer dominance in taker volume",
+  "trigger_condition": {
+    "metric": "taker_volume",
+    "direction": "buy",
+    "ratio_threshold": 1.5,
+    "volume_threshold": 100000,
+    "time_window": "5m"
+  }
+}
+```
+- direction: "buy" (buyers dominate), "sell" (sellers dominate), or "any" (either side)
+- ratio_threshold: Multiplier (1.5 = one side is 1.5x the other)
+- volume_threshold: Minimum total volume in USD (buy + sell)
+
 **IMPORTANT**: When you use `predict_signal_combination` to test AND/OR combinations, ALWAYS output using `signal-pool-config` format. This allows one-click creation of the entire signal pool.
 """
 
@@ -146,8 +167,8 @@ SIGNAL_TOOLS = [
                     "symbol": {"type": "string", "description": "Trading symbol, e.g., BTC, ETH"},
                     "indicators": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["oi_delta_percent", "funding_rate", "cvd", "depth_ratio", "order_imbalance", "taker_buy_ratio"]},
-                        "description": "List of indicator metric names to analyze (max 6)"
+                        "items": {"type": "string", "enum": ["oi_delta_percent", "funding_rate", "cvd", "depth_ratio", "order_imbalance", "taker_buy_ratio", "taker_volume"]},
+                        "description": "List of indicator metric names to analyze (max 7). Note: taker_volume is a composite indicator."
                     },
                     "time_window": {"type": "string", "enum": ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h"], "description": "Aggregation time window"}
                 },
@@ -159,7 +180,7 @@ SIGNAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "predict_signal_combination",
-            "description": "Predict trigger count when combining multiple signals with AND/OR logic. Use this BEFORE creating signals to ensure the combination will have reasonable trigger frequency.",
+            "description": "Predict trigger count when combining multiple signals with AND/OR logic. Use this BEFORE creating signals to ensure the combination will have reasonable trigger frequency. For taker_volume, use direction/ratio_threshold/volume_threshold instead of operator/threshold.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -169,14 +190,17 @@ SIGNAL_TOOLS = [
                         "items": {
                             "type": "object",
                             "properties": {
-                                "indicator": {"type": "string"},
-                                "operator": {"type": "string"},
-                                "threshold": {"type": "number"},
-                                "time_window": {"type": "string"}
+                                "indicator": {"type": "string", "description": "Metric name. Use 'taker_volume' for composite taker signal."},
+                                "operator": {"type": "string", "description": "For standard indicators only. Not used for taker_volume."},
+                                "threshold": {"type": "number", "description": "For standard indicators only. Not used for taker_volume."},
+                                "time_window": {"type": "string"},
+                                "direction": {"type": "string", "enum": ["buy", "sell", "any"], "description": "For taker_volume only: which side must dominate"},
+                                "ratio_threshold": {"type": "number", "description": "For taker_volume only: multiplier (e.g., 1.5 = 50% more)"},
+                                "volume_threshold": {"type": "number", "description": "For taker_volume only: min total volume in USD"}
                             },
-                            "required": ["indicator", "operator", "threshold", "time_window"]
+                            "required": ["indicator", "time_window"]
                         },
-                        "description": "List of signal configurations to combine (max 5)"
+                        "description": "List of signal configurations to combine (max 5). For taker_volume, use direction/ratio_threshold/volume_threshold."
                     },
                     "logic": {"type": "string", "enum": ["AND", "OR"], "description": "Combination logic: AND (all must trigger) or OR (any triggers)"}
                 },
@@ -711,6 +735,7 @@ def _tool_get_indicators_batch(
         "oi_delta_percent": "oi_delta",
         "funding_rate": "funding",
         "taker_buy_ratio": "taker_ratio",
+        "taker_volume": "taker_ratio",  # taker_volume uses same underlying data
     }
     interval_ms = TIMEFRAME_MS.get(time_window, 300000)
 
@@ -718,6 +743,15 @@ def _tool_get_indicators_batch(
 
     for indicator in indicators:
         metric = metric_map.get(indicator, indicator)
+
+        # Special note for taker_volume
+        if indicator == "taker_volume":
+            results["indicators"][indicator] = {
+                "note": "taker_volume is a composite indicator. Use direction (buy/sell/any), ratio_threshold (multiplier), and volume_threshold (USD) instead of operator/threshold.",
+                "underlying_metric": "taker_ratio (log scale)",
+                "example": {"direction": "buy", "ratio_threshold": 1.5, "volume_threshold": 100000}
+            }
+            continue
         signal_backtest_service._bucket_cache = {}
         bucket_values = signal_backtest_service._compute_all_bucket_values(
             db, symbol.upper(), metric, interval_ms
@@ -749,14 +783,17 @@ def _tool_get_indicators_batch(
 
 
 def _combine_signals_with_pool_edge_detection(
-    db: Session, symbol: str, signals: List[Dict]
+    db: Session, symbol: str, signals: List[Dict],
+    preloaded_data: Dict[str, List] = None,
+    preloaded_indexes: Dict[str, List[int]] = None
 ) -> set:
     """
     Combine signals using pool-level edge detection (same as real-time detection).
     Evaluates all signals at each check point and triggers only on False->True transition.
-    """
-    from services.market_flow_indicators import floor_timestamp
 
+    Performance optimization: accepts preloaded_data and preloaded_indexes to avoid
+    redundant database queries and enable O(log n) binary search.
+    """
     if not signals:
         return set()
 
@@ -768,18 +805,31 @@ def _combine_signals_with_pool_edge_detection(
     }
     interval_ms = timeframe_ms.get(time_window, 300000)
 
-    # Load raw data for all metrics
-    metrics_data = {}
+    import math
     metric_map = {"oi_delta_percent": "oi_delta", "taker_buy_ratio": "taker_ratio"}
 
-    for sig in signals:
-        metric = sig.get("indicator")
-        if metric and metric not in metrics_data:
-            metric = metric_map.get(metric, metric)
-            raw_data = signal_backtest_service._load_raw_data_for_metric(
-                db, symbol, metric, None, None, interval_ms
-            )
-            metrics_data[metric] = raw_data
+    # Use preloaded data if available, otherwise load from database
+    if preloaded_data is not None:
+        metrics_data = preloaded_data
+        metrics_indexes = preloaded_indexes or {}
+    else:
+        # Fallback: load raw data for all metrics (backward compatibility)
+        metrics_data = {}
+        metrics_indexes = {}
+        for sig in signals:
+            metric = sig.get("indicator")
+            if metric:
+                # taker_volume uses taker_ratio data
+                if metric == "taker_volume":
+                    mapped_metric = "taker_ratio"
+                else:
+                    mapped_metric = metric_map.get(metric, metric)
+                if mapped_metric not in metrics_data:
+                    raw_data = signal_backtest_service._load_raw_data_for_metric(
+                        db, symbol, mapped_metric, None, None, interval_ms
+                    )
+                    metrics_data[mapped_metric] = raw_data
+                    metrics_indexes[mapped_metric] = [r[0] for r in raw_data] if raw_data else []
 
     # Generate check points from all data timestamps
     all_timestamps = set()
@@ -800,23 +850,55 @@ def _combine_signals_with_pool_edge_detection(
 
         for sig in signals:
             metric = sig.get("indicator")
-            operator = sig.get("operator")
-            threshold = sig.get("threshold")
 
-            metric = metric_map.get(metric, metric)
-            raw_data = metrics_data.get(metric, [])
+            # Handle taker_volume composite signal
+            if metric == "taker_volume":
+                direction = sig.get("direction", "any")
+                ratio_threshold = sig.get("ratio_threshold", 1.5)
+                log_threshold = math.log(max(ratio_threshold, 1.01))
 
-            value = signal_backtest_service._calculate_indicator_at_time(
-                raw_data, metric, check_time, interval_ms
-            )
+                raw_data = metrics_data.get("taker_ratio", [])
+                ts_index = metrics_indexes.get("taker_ratio")
 
-            if value is None:
-                all_met = False
-                break
+                value = signal_backtest_service._calculate_indicator_at_time(
+                    raw_data, "taker_ratio", check_time, interval_ms, ts_index
+                )
 
-            if not signal_backtest_service._evaluate_condition(value, operator, threshold):
-                all_met = False
-                break
+                if value is None:
+                    all_met = False
+                    break
+
+                log_ratio = value
+                if direction == "buy":
+                    condition_met = log_ratio >= log_threshold
+                elif direction == "sell":
+                    condition_met = log_ratio <= -log_threshold
+                else:  # any
+                    condition_met = abs(log_ratio) >= log_threshold
+
+                if not condition_met:
+                    all_met = False
+                    break
+            else:
+                # Standard indicator
+                operator = sig.get("operator")
+                threshold = sig.get("threshold")
+
+                mapped_metric = metric_map.get(metric, metric)
+                raw_data = metrics_data.get(mapped_metric, [])
+                ts_index = metrics_indexes.get(mapped_metric)
+
+                value = signal_backtest_service._calculate_indicator_at_time(
+                    raw_data, mapped_metric, check_time, interval_ms, ts_index
+                )
+
+                if value is None:
+                    all_met = False
+                    break
+
+                if not signal_backtest_service._evaluate_condition(value, operator, threshold):
+                    all_met = False
+                    break
 
         # Pool-level edge detection: only trigger on False -> True
         if all_met and not was_active:
@@ -830,53 +912,108 @@ def _combine_signals_with_pool_edge_detection(
 def _tool_predict_signal_combination(
     db: Session, symbol: str, signals: List[Dict], logic: str
 ) -> Dict[str, Any]:
-    """Predict trigger count when combining multiple signals."""
+    """
+    Predict trigger count when combining multiple signals.
+
+    Performance optimizations:
+    1. Preload all required metric data once (avoid redundant DB queries)
+    2. Build timestamp indexes for O(log n) binary search
+    3. Reuse preloaded data for both individual and combined analysis
+    """
     # Limit to 5 signals
     signals = signals[:5]
     if not signals:
         return {"error": "No signals provided"}
 
-    # Get triggers for each signal (for individual stats and OR logic)
+    # Get time window from first signal (assume all signals use same time window)
+    time_window = signals[0].get("time_window", "5m")
+    timeframe_ms = {
+        "1m": 60000, "3m": 180000, "5m": 300000,
+        "15m": 900000, "30m": 1800000, "1h": 3600000
+    }
+    interval_ms = timeframe_ms.get(time_window, 300000)
+
+    metric_map = {"oi_delta_percent": "oi_delta", "taker_buy_ratio": "taker_ratio"}
+
+    # Step 1: Preload all required metric data ONCE
+    preloaded_data = {}
+    preloaded_indexes = {}
+    required_metrics = set()
+
+    for sig in signals:
+        metric = sig.get("indicator")
+        if metric:
+            # taker_volume uses taker_ratio data internally
+            if metric == "taker_volume":
+                required_metrics.add("taker_ratio")
+            else:
+                mapped_metric = metric_map.get(metric, metric)
+                required_metrics.add(mapped_metric)
+
+    for mapped_metric in required_metrics:
+        raw_data = signal_backtest_service._load_raw_data_for_metric(
+            db, symbol.upper(), mapped_metric, None, None, interval_ms
+        )
+        preloaded_data[mapped_metric] = raw_data
+        # Build timestamp index for binary search (data is already sorted by timestamp)
+        preloaded_indexes[mapped_metric] = [r[0] for r in raw_data] if raw_data else []
+
+    # Step 2: Calculate individual signal triggers using preloaded data
     signal_triggers = {}
     individual_counts = {}
     individual_samples = {}
 
     for i, sig in enumerate(signals):
-        trigger_condition = {
-            "metric": sig.get("indicator"),
-            "operator": sig.get("operator"),
-            "threshold": sig.get("threshold"),
-            "time_window": sig.get("time_window")
-        }
+        metric = sig.get("indicator")
 
-        result = signal_backtest_service.backtest_temp_signal(
-            db=db,
-            symbol=symbol.upper(),
-            trigger_condition=trigger_condition,
-            kline_min_ts=None,
-            kline_max_ts=None
-        )
+        # Handle taker_volume composite signal separately
+        if metric == "taker_volume":
+            direction = sig.get("direction", "any")
+            ratio_threshold = sig.get("ratio_threshold", 1.5)
+            volume_threshold = sig.get("volume_threshold", 0)
 
-        if "error" in result:
-            return {"error": f"Signal {i+1} backtest failed: {result['error']}"}
+            raw_data = preloaded_data.get("taker_ratio", [])
+            ts_index = preloaded_indexes.get("taker_ratio", [])
 
-        triggers = result.get("triggers", [])
-        trigger_timestamps = [t["timestamp"] for t in triggers]
-        signal_triggers[i] = set(trigger_timestamps)
+            if not raw_data:
+                return {"error": f"No data found for taker_volume"}
+
+            triggers = _find_taker_volume_triggers(
+                raw_data, ts_index, direction, ratio_threshold, volume_threshold, interval_ms
+            )
+        else:
+            # Standard indicator
+            operator = sig.get("operator")
+            threshold = sig.get("threshold")
+
+            if not all([metric, operator, threshold is not None]):
+                return {"error": f"Signal {i+1} has incomplete configuration"}
+
+            mapped_metric = metric_map.get(metric, metric)
+            raw_data = preloaded_data.get(mapped_metric, [])
+            ts_index = preloaded_indexes.get(mapped_metric, [])
+
+            if not raw_data:
+                return {"error": f"No data found for metric {metric}"}
+
+            # Find triggers using preloaded data with binary search
+            triggers = _find_triggers_with_preloaded_data(
+                raw_data, ts_index, mapped_metric, operator, threshold, interval_ms
+            )
+
+        signal_triggers[i] = set(triggers)
         individual_counts[i] = len(triggers)
-        individual_samples[i] = sorted(trigger_timestamps)[:5]
+        individual_samples[i] = sorted(triggers)[:5]
 
-    # Combine based on logic
+    # Step 3: Combine based on logic (reuse preloaded data)
     if logic == "AND":
-        # Use pool-level edge detection (same as real-time detection)
         combined_ts = _combine_signals_with_pool_edge_detection(
-            db, symbol.upper(), signals
+            db, symbol.upper(), signals, preloaded_data, preloaded_indexes
         )
     else:  # OR
         combined_ts = set.union(*signal_triggers.values()) if signal_triggers else set()
 
     combined_count = len(combined_ts)
-    # Sample timestamps for combined triggers (max 10)
     combined_samples = sorted(list(combined_ts))[:10]
 
     # Build response
@@ -895,13 +1032,105 @@ def _tool_predict_signal_combination(
         )
     }
 
-    # Add recommendation
     if logic == "AND" and combined_count < 3:
         response["recommendation"] = "AND logic too strict. Consider relaxing thresholds or using OR logic."
     elif logic == "OR" and combined_count > 50:
         response["recommendation"] = "OR logic too loose. Consider tightening thresholds or using AND logic."
 
     return response
+
+
+def _find_triggers_with_preloaded_data(
+    raw_data: List, ts_index: List[int], metric: str,
+    operator: str, threshold: float, interval_ms: int
+) -> List[int]:
+    """
+    Find trigger timestamps using preloaded data with binary search optimization.
+    Implements edge detection: only triggers on False -> True transitions.
+    """
+    if not raw_data:
+        return []
+
+    # Generate check points from data timestamps
+    check_points = sorted(set(ts_index))
+    if not check_points:
+        return []
+
+    triggers = []
+    was_active = False
+
+    for check_time in check_points:
+        value = signal_backtest_service._calculate_indicator_at_time(
+            raw_data, metric, check_time, interval_ms, ts_index
+        )
+
+        if value is None:
+            was_active = False
+            continue
+
+        condition_met = signal_backtest_service._evaluate_condition(value, operator, threshold)
+
+        # Edge detection: only trigger on False -> True
+        if condition_met and not was_active:
+            triggers.append(check_time)
+
+        was_active = condition_met
+
+    return triggers
+
+
+def _find_taker_volume_triggers(
+    raw_data: List, ts_index: List[int], direction: str,
+    ratio_threshold: float, volume_threshold: float, interval_ms: int
+) -> List[int]:
+    """
+    Find taker_volume trigger timestamps using log ratio comparison.
+    Uses edge detection: only triggers on False -> True transitions.
+    """
+    import math
+
+    if not raw_data:
+        return []
+
+    check_points = sorted(set(ts_index))
+    if not check_points:
+        return []
+
+    # Convert ratio_threshold to log threshold
+    log_threshold = math.log(max(ratio_threshold, 1.01))
+
+    triggers = []
+    was_active = False
+
+    for check_time in check_points:
+        # Get taker data at this time point
+        # raw_data format: (timestamp, buy, sell, ratio, log_ratio)
+        value = signal_backtest_service._calculate_indicator_at_time(
+            raw_data, "taker_ratio", check_time, interval_ms, ts_index
+        )
+
+        if value is None:
+            was_active = False
+            continue
+
+        # value is log_ratio from taker_ratio calculation
+        log_ratio = value
+        condition_met = False
+
+        if direction == "buy":
+            condition_met = log_ratio >= log_threshold
+        elif direction == "sell":
+            condition_met = log_ratio <= -log_threshold
+        elif direction == "any":
+            condition_met = abs(log_ratio) >= log_threshold
+
+        # Edge detection: only trigger on False -> True
+        if condition_met and not was_active:
+            triggers.append(check_time)
+
+        was_active = condition_met
+
+    return triggers
 
 
 def _execute_tool(db: Session, tool_name: str, arguments: Dict) -> str:

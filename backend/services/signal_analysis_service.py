@@ -315,7 +315,14 @@ class SignalAnalysisService:
         return values, min_ts, max_ts
 
     def _get_taker_ratio_history(self, db, symbol, interval_ms, start_time_ms, current_time_ms):
-        """Get taker buy/sell ratio history. Aligned with K-line TAKER indicator."""
+        """Get taker buy/sell log ratio history. Uses ln(buy/sell) for symmetry around 0.
+
+        Log transformation makes the ratio symmetric:
+        - ln(2.0) = +0.69 (buyers 2x sellers)
+        - ln(1.0) = 0 (balanced)
+        - ln(0.5) = -0.69 (sellers 2x buyers)
+        """
+        import math
         from services.market_flow_indicators import floor_timestamp
         from database.models import MarketTradesAggregated
 
@@ -343,10 +350,11 @@ class SignalAnalysisService:
         sorted_times = sorted(buckets.keys())
         values = []
         for ts in sorted_times:
+            buy = buckets[ts]["buy"]
             sell = buckets[ts]["sell"]
-            # Ratio = buy / sell, aligned with K-line _get_taker_data()
-            if sell > 0:
-                values.append(buckets[ts]["buy"] / sell)
+            # Log ratio = ln(buy/sell), symmetric around 0
+            if buy > 0 and sell > 0:
+                values.append(math.log(buy / sell))
 
         min_ts = sorted_times[0] if sorted_times else None
         max_ts = sorted_times[-1] if sorted_times else None
@@ -433,8 +441,10 @@ class SignalAnalysisService:
 
     def _generate_suggestions(self, stats: Dict[str, Any], metric: str) -> Dict[str, Any]:
         """Generate threshold suggestions based on statistics."""
+        import math
         p = stats["abs_percentiles"]
-        return {
+
+        suggestions = {
             "aggressive": {
                 "threshold": p["p75"],
                 "description": "~25% trigger rate"
@@ -449,6 +459,16 @@ class SignalAnalysisService:
                 "description": "~5% trigger rate"
             }
         }
+
+        # For taker_ratio (log values), add multiplier info for user understanding
+        if metric == "taker_ratio":
+            for key in suggestions:
+                log_val = suggestions[key]["threshold"]
+                multiplier = round(math.exp(abs(log_val)), 2)
+                suggestions[key]["multiplier"] = multiplier
+                suggestions[key]["description"] += f" ({multiplier}x)"
+
+        return suggestions
 
     def _analyze_taker_volume(self, db, symbol, interval_ms, start_time_ms, current_time_ms, days):
         """
@@ -487,17 +507,18 @@ class SignalAnalysisService:
                 "message": f"Need at least {MIN_SAMPLES} samples, found {len(sorted_times)}"
             }
 
-        # Calculate ratio and volume for each period
-        # Ratio = buy/sell (same as taker_ratio for consistency)
-        # >1 means buyers dominate, <1 means sellers dominate
+        # Calculate log ratio and volume for each period
+        # Log ratio = ln(buy/sell), symmetric around 0
+        # >0 means buyers dominate, <0 means sellers dominate
+        import math
         ratios = []
         volumes = []
         for ts in sorted_times:
             buy = buckets[ts]["buy"]
             sell = buckets[ts]["sell"]
             total = buy + sell
-            if total > 0 and sell > 0:
-                ratio = buy / sell  # Unified formula: buy/sell
+            if total > 0 and buy > 0 and sell > 0:
+                ratio = math.log(buy / sell)  # Log transformation for symmetry
                 ratios.append(ratio)
                 volumes.append(total)
 
@@ -533,6 +554,8 @@ class SignalAnalysisService:
         if sorted_times:
             time_range_hours = (sorted_times[-1] - sorted_times[0]) / (1000 * 60 * 60)
 
+        # Convert log ratio suggestions back to multiplier for user-friendly display
+        # User sets multiplier (e.g., 1.5), backend converts to log for comparison
         return {
             "status": "ok",
             "symbol": symbol,
@@ -540,13 +563,14 @@ class SignalAnalysisService:
             "period": f"{interval_ms // 60000}m",
             "sample_count": len(ratios),
             "time_range_hours": round(time_range_hours, 1),
-            "ratio_statistics": ratio_stats,
+            "ratio_statistics": ratio_stats,  # Log values for display
             "volume_statistics": volume_stats,
             "suggestions": {
                 "ratio": {
-                    "aggressive": ratio_stats["p75"],
-                    "moderate": ratio_stats["p90"],
-                    "conservative": ratio_stats["p95"]
+                    # Convert log values back to multiplier: exp(log_ratio)
+                    "aggressive": round(math.exp(abs(ratio_stats["p75"])), 2),
+                    "moderate": round(math.exp(abs(ratio_stats["p90"])), 2),
+                    "conservative": round(math.exp(abs(ratio_stats["p95"])), 2)
                 },
                 "volume": {
                     "low": volume_stats["p25"],

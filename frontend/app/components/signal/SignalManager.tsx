@@ -197,7 +197,7 @@ const METRICS = [
   { value: 'cvd', label: 'CVD', desc: 'Cumulative Volume Delta. Positive=buyers dominate, Negative=sellers dominate' },
   { value: 'funding', label: 'Funding Rate', desc: 'Funding rate %. Positive=longs pay shorts' },
   { value: 'depth_ratio', label: 'Depth Ratio', desc: 'Bid/Ask depth ratio. >1=more bids, <1=more asks' },
-  { value: 'taker_ratio', label: 'Taker Ratio', desc: 'Taker buy/sell ratio. >1=buyers aggressive' },
+  { value: 'taker_ratio', label: 'Taker Ratio', desc: 'Log taker ratio ln(buy/sell). >0=buyers, <0=sellers. Symmetric around 0' },
   { value: 'order_imbalance', label: 'Order Imbalance', desc: 'Order book imbalance (-1 to 1). Positive=buy pressure' },
   { value: 'oi', label: 'OI (Absolute)', desc: 'Absolute Open Interest value in USD' },
   { value: 'taker_volume', label: 'Taker Volume', desc: 'Composite signal: direction + ratio + volume threshold', isComposite: true },
@@ -1159,11 +1159,11 @@ export default function SignalManager() {
                     <Input
                       type="number"
                       step="0.1"
-                      min="1"
+                      min="1.01"
                       value={signalForm.ratio_threshold}
                       onChange={e => setSignalForm(prev => ({ ...prev, ratio_threshold: parseFloat(e.target.value) || 1.5 }))}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">Buy/Sell ratio (e.g., 1.5 = 50% more)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Multiplier (e.g., 1.5 = 50% more). Symmetric for buy/sell.</p>
                   </div>
                   <div>
                     <Label>Volume Threshold</Label>
@@ -1249,19 +1249,19 @@ export default function SignalManager() {
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-2 bg-background rounded border">
-                        <div className="text-xs font-medium mb-1">Ratio (buy/sell)</div>
+                        <div className="text-xs font-medium mb-1">Ratio Multiplier</div>
                         <div className="text-xs text-muted-foreground mb-2">
-                          Range: {(metricAnalysis as any).ratio_statistics?.min?.toFixed(2)} ~ {(metricAnalysis as any).ratio_statistics?.max?.toFixed(2)}
+                          Log range: {(metricAnalysis as any).ratio_statistics?.min?.toFixed(2)} ~ {(metricAnalysis as any).ratio_statistics?.max?.toFixed(2)} (0=balanced)
                         </div>
                         <div className="flex flex-wrap gap-1">
                           <button type="button" onClick={() => setSignalForm(prev => ({ ...prev, ratio_threshold: (metricAnalysis as any).suggestions?.ratio?.aggressive }))} className="text-xs px-1.5 py-0.5 bg-muted border rounded hover:bg-accent">
-                            {(metricAnalysis as any).suggestions?.ratio?.aggressive?.toFixed(2)}
+                            {(metricAnalysis as any).suggestions?.ratio?.aggressive?.toFixed(2)}x
                           </button>
                           <button type="button" onClick={() => setSignalForm(prev => ({ ...prev, ratio_threshold: (metricAnalysis as any).suggestions?.ratio?.moderate }))} className="text-xs px-1.5 py-0.5 bg-primary/10 border border-primary rounded hover:bg-primary/20">
-                            {(metricAnalysis as any).suggestions?.ratio?.moderate?.toFixed(2)} ★
+                            {(metricAnalysis as any).suggestions?.ratio?.moderate?.toFixed(2)}x ★
                           </button>
                           <button type="button" onClick={() => setSignalForm(prev => ({ ...prev, ratio_threshold: (metricAnalysis as any).suggestions?.ratio?.conservative }))} className="text-xs px-1.5 py-0.5 bg-muted border rounded hover:bg-accent">
-                            {(metricAnalysis as any).suggestions?.ratio?.conservative?.toFixed(2)}
+                            {(metricAnalysis as any).suggestions?.ratio?.conservative?.toFixed(2)}x
                           </button>
                         </div>
                       </div>
@@ -1306,28 +1306,34 @@ export default function SignalManager() {
                         type="button"
                         onClick={() => setSignalForm(prev => ({ ...prev, threshold: metricAnalysis.suggestions!.aggressive.threshold }))}
                         className="text-xs px-2 py-1 bg-background border rounded hover:bg-accent"
+                        title={metricAnalysis.suggestions.aggressive.description}
                       >
                         Aggressive {signalForm.metric === 'funding'
                           ? `${(metricAnalysis.suggestions.aggressive.threshold * 100).toFixed(4)}%`
                           : metricAnalysis.suggestions.aggressive.threshold.toFixed(4)}
+                        {(metricAnalysis.suggestions.aggressive as any).multiplier && ` (${(metricAnalysis.suggestions.aggressive as any).multiplier}x)`}
                       </button>
                       <button
                         type="button"
                         onClick={() => setSignalForm(prev => ({ ...prev, threshold: metricAnalysis.suggestions!.moderate.threshold }))}
                         className="text-xs px-2 py-1 bg-primary/10 border border-primary rounded hover:bg-primary/20"
+                        title={metricAnalysis.suggestions.moderate.description}
                       >
                         Moderate {signalForm.metric === 'funding'
                           ? `${(metricAnalysis.suggestions.moderate.threshold * 100).toFixed(4)}%`
-                          : metricAnalysis.suggestions.moderate.threshold.toFixed(4)} ★
+                          : metricAnalysis.suggestions.moderate.threshold.toFixed(4)}
+                        {(metricAnalysis.suggestions.moderate as any).multiplier && ` (${(metricAnalysis.suggestions.moderate as any).multiplier}x)`} ★
                       </button>
                       <button
                         type="button"
                         onClick={() => setSignalForm(prev => ({ ...prev, threshold: metricAnalysis.suggestions!.conservative.threshold }))}
                         className="text-xs px-2 py-1 bg-background border rounded hover:bg-accent"
+                        title={metricAnalysis.suggestions.conservative.description}
                       >
                         Conservative {signalForm.metric === 'funding'
                           ? `${(metricAnalysis.suggestions.conservative.threshold * 100).toFixed(4)}%`
                           : metricAnalysis.suggestions.conservative.threshold.toFixed(4)}
+                        {(metricAnalysis.suggestions.conservative as any).multiplier && ` (${(metricAnalysis.suggestions.conservative as any).multiplier}x)`}
                       </button>
                     </div>
                   </div>

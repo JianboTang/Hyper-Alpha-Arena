@@ -23,6 +23,13 @@ interface TriggerData {
     threshold: number
   }>
   trigger_type?: string
+  // taker_volume composite signal fields
+  direction?: string
+  ratio?: number
+  log_ratio?: number
+  volume?: number
+  ratio_threshold?: number
+  volume_threshold?: number
 }
 
 interface SignalPreviewChartProps {
@@ -230,6 +237,39 @@ export default function SignalPreviewChart({ klines, triggers, timeWindow, signa
               <span className="text-gray-500 ml-1">(≥{sig.threshold?.toFixed(4) ?? 'N/A'})</span>
             </div>
           ))}
+        </div>
+      )
+    }
+
+    // taker_volume composite signal trigger
+    if (t.ratio !== undefined && t.direction !== undefined) {
+      const dirColor = t.direction === 'buy' ? 'text-green-400' : 'text-red-400'
+      const dirLabel = t.direction === 'buy' ? 'BUY' : 'SELL'
+      // Calculate dominant side multiplier for intuitive display
+      // BUY: ratio = buy/sell, so multiplier = ratio (e.g., 2.0x means buyers 2x sellers)
+      // SELL: ratio = buy/sell < 1, so multiplier = 1/ratio (e.g., 0.5 -> 2.0x means sellers 2x buyers)
+      const dominantMultiplier = t.direction === 'sell' && t.ratio && t.ratio > 0
+        ? (1 / t.ratio).toFixed(2)
+        : t.ratio?.toFixed(2)
+      const dominantLabel = t.direction === 'buy' ? 'Buyers' : 'Sellers'
+      return (
+        <div key={idx} className="text-xs space-y-0.5">
+          <div>
+            <span className="text-gray-400">Direction:</span>{' '}
+            <span className={`font-mono font-medium ${dirColor}`}>{dirLabel}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">{dominantLabel}:</span>{' '}
+            <span className="text-white font-mono">{dominantMultiplier}x</span>
+            <span className="text-gray-500 ml-1">(≥{t.ratio_threshold?.toFixed(2)}x)</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Volume:</span>{' '}
+            <span className="text-white font-mono">${((t.volume || 0) / 1000).toFixed(0)}K</span>
+            {t.volume_threshold !== undefined && t.volume_threshold > 0 && (
+              <span className="text-gray-500 ml-1">(≥${(t.volume_threshold / 1000).toFixed(0)}K)</span>
+            )}
+          </div>
         </div>
       )
     }
