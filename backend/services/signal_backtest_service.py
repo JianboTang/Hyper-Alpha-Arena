@@ -77,17 +77,32 @@ class SignalBacktestService:
             logger.warning(f"[Backtest] Signal {signal_id} NOT FOUND in database")
             return {"error": "Signal not found"}
 
+        # Debug: log raw row data and types
+        logger.warning(f"[Backtest] DB row: id={row[0]}, name={row[1]}, "
+                       f"trigger_condition type={type(row[3])}")
+
+        # Handle trigger_condition - may be string (SQLite/some drivers) or dict (PostgreSQL JSONB)
+        trigger_condition = row[3]
+        if isinstance(trigger_condition, str):
+            import json
+            try:
+                trigger_condition = json.loads(trigger_condition)
+                logger.warning(f"[Backtest] Parsed trigger_condition from JSON string")
+            except json.JSONDecodeError as e:
+                logger.warning(f"[Backtest] Failed to parse trigger_condition: {e}")
+                trigger_condition = {}
+
         signal_def = {
             "id": row[0],
             "signal_name": row[1],
             "description": row[2],
-            "trigger_condition": row[3],
+            "trigger_condition": trigger_condition if isinstance(trigger_condition, dict) else {},
             "enabled": row[4]
         }
 
         condition = signal_def.get("trigger_condition", {})
-        metric = condition.get("metric")
-        time_window = condition.get("time_window", "5m")
+        metric = condition.get("metric") if isinstance(condition, dict) else None
+        time_window = condition.get("time_window", "5m") if isinstance(condition, dict) else "5m"
 
         logger.warning(f"[Backtest] Signal found: name={signal_def['signal_name']}, "
                        f"metric={metric}, time_window={time_window}, condition={condition}")
