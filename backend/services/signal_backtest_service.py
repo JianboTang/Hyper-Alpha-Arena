@@ -994,13 +994,20 @@ class SignalBacktestService:
             )
             row = result.fetchone()
             if row:
+                # Parse trigger_condition - ORM defines as Text, so it may be string
+                trigger_cond = row[2]
+                if isinstance(trigger_cond, str):
+                    try:
+                        trigger_cond = json.loads(trigger_cond)
+                    except json.JSONDecodeError:
+                        trigger_cond = {}
                 signal_defs[signal_id] = {
                     "id": row[0],
                     "signal_name": row[1],
-                    "trigger_condition": row[2]
+                    "trigger_condition": trigger_cond
                 }
                 signal_names[signal_id] = row[1]
-                time_window = row[2].get("time_window", time_window)
+                time_window = trigger_cond.get("time_window", time_window)
 
         if not signal_defs:
             return {"error": "No valid signals in pool"}

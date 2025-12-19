@@ -526,17 +526,30 @@ class SignalDetectionService:
 
             db = SessionLocal()
             try:
+                def _format_signal_for_log(s: dict) -> dict:
+                    """Format signal data for logging, handling both standard and taker_volume signals."""
+                    base = {
+                        "signal_id": s["signal_id"],
+                        "signal_name": s["signal_name"],
+                        "metric": s["metric"],
+                    }
+                    if s["metric"] == "taker_volume":
+                        # taker_volume uses different field names
+                        base["current_value"] = s.get("ratio")  # Use ratio as display value
+                        base["threshold"] = s.get("ratio_threshold")
+                        base["direction"] = s.get("actual_direction")
+                        base["volume"] = s.get("total")
+                        base["volume_threshold"] = s.get("volume_threshold")
+                    else:
+                        base["current_value"] = s.get("current_value")
+                        base["threshold"] = s.get("threshold")
+                        base["operator"] = s.get("operator")
+                    return base
+
                 trigger_value_json = json.dumps({
                     "logic": trigger_result["logic"],
                     "signals_triggered": [
-                        {
-                            "signal_id": s["signal_id"],
-                            "signal_name": s["signal_name"],
-                            "metric": s["metric"],
-                            "current_value": s.get("current_value"),
-                            "threshold": s.get("threshold"),
-                            "operator": s.get("operator"),
-                        }
+                        _format_signal_for_log(s)
                         for s in trigger_result["signals_triggered"]
                     ],
                 })
