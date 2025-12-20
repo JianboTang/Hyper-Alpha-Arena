@@ -145,92 +145,13 @@ docker compose up -d --build # (or docker-compose up -d --build)
 
 ## First-Time Setup
 
-### Understanding Hyperliquid Authentication
+For detailed setup instructions including:
+- Hyperliquid wallet configuration (Testnet & Mainnet)
+- AI Trader creation and LLM API setup
+- Trading environment and leverage settings
+- Signal-triggered trading configuration
 
-> **⚠️ IMPORTANT**: Hyperliquid is a decentralized exchange (DEX) where all trading operations are executed as on-chain transactions. Unlike centralized exchanges that use API keys, DEX platforms require **private keys** to cryptographically sign each transaction on the blockchain. This is not a limitation but a fundamental requirement of decentralized architecture - your trades are executed directly on-chain without intermediaries.
-
-**Official Documentation:**
-- Hyperliquid API Signing: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/signing
-- Python SDK: https://github.com/hyperliquid-dex/hyperliquid-python-sdk
-
-**Our Security Measures:**
-- Private keys are encrypted using AES-256 before storage
-- All encryption/decryption happens locally on your server
-- Keys are never transmitted in plain text
-- We recommend using a dedicated trading wallet separate from your main holdings
-
-### Setup Steps
-
-**1. Create Your First AI Trader**
-
-Open http://localhost:8802 and navigate to **AI Traders** section:
-- Name: e.g., "GPT-5 Trader"
-- Model: Select from dropdown (gpt-5-mini, claude-sonnet-4.5, deepseek-chat, etc.)
-- API Key: Your LLM provider API key (OpenAI/Anthropic/Deepseek)
-- Base URL: Leave default or use custom endpoint
-
-**2. Get Your Private Key**
-
-Hyperliquid supports two wallet types. Choose the method that matches your setup:
-
-**Option A: Using EVM Wallet (MetaMask, Rabby, etc.)**
-- If you connected to Hyperliquid using MetaMask, Rabby, WalletConnect, or other Web3 wallets
-- Export your private key from your wallet software:
-  - **MetaMask**: Account Details → Export Private Key
-  - **Rabby**: Settings → Export Private Key
-  - Other wallets: Check their documentation for private key export
-- This is the most common method for users who already have Web3 wallets
-- Official guide: https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/how-to-start-trading
-
-**Option B: Using Hyperliquid Email Wallet**
-- If you logged into Hyperliquid using email (not wallet connection)
-- Visit https://app.hyperliquid-testnet.xyz/ (testnet) or https://app.hyperliquid.xyz/ (mainnet)
-- Click "Export Email Wallet" in the settings dropdown
-- Follow the steps to copy your private key
-- Official guide: https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/export-your-email-wallet
-
-**3. Configure Hyperliquid Wallet**
-
-In the **Hyperliquid Wallets** section, you'll see two wallet panels:
-- **Testnet Wallet**: For risk-free testing with free test funds
-- **Mainnet Wallet**: For real trading with actual capital
-
-For each wallet:
-- Enter your private key (obtained from step 2 above)
-- Set maximum leverage (1-50x)
-- Set default leverage (1-3x recommended)
-- Click **Save Wallet**
-
-**4. Set Global Trading Environment**
-
-Navigate to **Settings** or **Hyperliquid** page:
-- **TESTNET**: All AI Traders use testnet wallets (recommended for initial testing)
-- **MAINNET**: All AI Traders use mainnet wallets (real money)
-
-**5. Enable Auto Trading**
-
-In your AI Trader configuration:
-- Toggle **Auto Trading** to ON
-- Set Trigger Mode: Real-time (recommended)
-- Set Trigger Interval: 60-150 seconds
-- Choose Prompt Template: "Hyperliquid Pro" includes leverage education
-- Monitor initial trades in **System Logs**
-
-### Safety Recommendations
-
-These are suggestions based on best practices. Many users have different risk preferences:
-- Consider testing on testnet first to understand system behavior
-- Starting with lower leverage (1x-3x) can help you learn the system
-- Monitoring margin usage helps avoid unexpected liquidations
-- Using dedicated trading wallets (separate from main holdings) is a common security practice
-- Some users prefer gradual scaling rather than maximum leverage from the start
-
-### Optional: Signal-Triggered Trading
-
-After familiarizing yourself with scheduled trading, explore signal-based triggers:
-- Navigate to **Signal Management** to create custom market condition signals
-- Use **AI Signal Generator** to describe conditions in natural language
-- Bind signal pools to AI Traders for condition-based activation
+**📖 See our complete guide: [Getting Started](https://www.akooi.com/docs/guide/getting-started.html)**
 
 ## Supported Models
 
