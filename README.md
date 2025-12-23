@@ -1,11 +1,13 @@
 # <img width="40" height="40" alt="logo_app" src="https://github.com/user-attachments/assets/911ba846-a08b-4e3e-b119-ec1e78347288" style="vertical-align: middle;" /> Hyper Alpha Arena
 
-> An open-source AI-powered cryptocurrency trading platform for autonomous trading with Large Language Models. Deploy AI trading strategies with both paper trading simulation and real perpetual contract trading on Hyperliquid DEX.
+> A **production-ready**, open-source AI trading platform that enables anyone—**with or without coding experience**—to deploy autonomous LLM-powered cryptocurrency trading strategies. Features built-in AI assistants for signal creation and prompt generation. Supports Hyperliquid DEX (testnet paper trading & mainnet real trading), with Binance and Aster DEX integration planned. **English & 中文 supported.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub stars](https://img.shields.io/github/stars/HammerGPT/Hyper-Alpha-Arena)](https://github.com/HammerGPT/Hyper-Alpha-Arena/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/HammerGPT/Hyper-Alpha-Arena)](https://github.com/HammerGPT/Hyper-Alpha-Arena/network)
 [![Community](https://img.shields.io/badge/Telegram-Community-blue?logo=telegram)](https://t.me/+RqxjT7Gttm9hOGEx)
+[![English](https://img.shields.io/badge/Lang-English-blue)](https://www.akooi.com/docs/)
+[![中文](https://img.shields.io/badge/语言-中文-red)](https://www.akooi.com/docs/zh/)
 
 ## 🔥 Start Trading Now - Up to 30% Fee Discount
 
@@ -31,6 +33,13 @@ Ready to put your AI trading strategies to work? Get started with these top exch
 Hyper Alpha Arena is a production-ready AI trading platform where Large Language Models (LLMs) autonomously execute cryptocurrency trading strategies. Inspired by [nof1 Alpha Arena](https://nof1.ai), this platform enables AI models like GPT-5, Claude, and Deepseek to make intelligent trading decisions based on real-time market data and execute trades automatically.
 
 **Official Website:** https://www.akooi.com/
+
+## Who is this for
+
+- **Non-technical traders**: Built-in AI assistants help you create trading signals and strategy prompts through natural conversation—no coding required
+- **Quantitative researchers**: Test LLM-driven strategies with real market data on testnet before deploying real capital
+- **Hyperliquid users**: Native integration with both testnet (free paper trading) and mainnet (1-50x leverage perpetuals)
+- **AI enthusiasts**: Experiment with different LLMs (GPT, Claude, Deepseek) competing in real trading scenarios
 
 **Trading Modes:**
 - **Hyperliquid Testnet (Paper Trading)**: Risk-free testing with real market mechanics, free test funds, and actual order book - a superior paper trading experience
