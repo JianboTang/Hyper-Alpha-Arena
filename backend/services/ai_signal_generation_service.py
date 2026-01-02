@@ -60,7 +60,8 @@ You have exactly 3 tools. Use them efficiently:
 **Step 2: `predict_signal_combination`** - Test signal combination BEFORE creating
 - Input your proposed signal configs with thresholds
 - Choose AND (strict) or OR (loose) logic
-- Returns: individual trigger counts, combined trigger count, sample timestamps
+- Analyzes the LAST 7 DAYS of data to calculate trigger frequency
+- Returns: individual trigger counts (over 7 days), combined trigger count, sample timestamps
 - If combined_triggers < 3 (AND too strict) or > 50 (OR too loose), adjust and re-call
 
 **Step 3: `get_kline_context`** (optional) - Verify trigger quality
@@ -70,7 +71,7 @@ You have exactly 3 tools. Use them efficiently:
 ## CRITICAL RULES
 - NEVER output signal configs without calling `predict_signal_combination` first
 - AND logic often results in 0 triggers if thresholds are too strict - always verify!
-- Aim for 5-30 combined triggers over 7 days
+- Aim for 5-30 combined triggers over 7 days (approximately 1-4 triggers per day)
 - If combination fails, relax thresholds or switch AND→OR
 
 ## AVAILABLE INDICATORS (query any you need)
@@ -206,7 +207,7 @@ SIGNAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "predict_signal_combination",
-            "description": "Predict trigger count when combining multiple signals with AND/OR logic. Use this BEFORE creating signals to ensure the combination will have reasonable trigger frequency. For taker_volume, use direction/ratio_threshold/volume_threshold instead of operator/threshold.",
+            "description": "Predict trigger count when combining multiple signals with AND/OR logic. Analyzes the LAST 7 DAYS of data to calculate trigger frequency. Use this BEFORE creating signals to ensure the combination will have reasonable trigger frequency. For taker_volume, use direction/ratio_threshold/volume_threshold instead of operator/threshold.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -983,9 +984,14 @@ def _tool_predict_signal_combination(
                 mapped_metric = metric_map.get(metric, metric)
                 required_metrics.add(mapped_metric)
 
+    # Calculate 7-day time range (matching backtest behavior)
+    from datetime import datetime
+    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    start_time_ms = current_time_ms - (7 * 24 * 60 * 60 * 1000)  # 7 days ago
+
     for mapped_metric in required_metrics:
         raw_data = signal_backtest_service._load_raw_data_for_metric(
-            db, symbol.upper(), mapped_metric, None, None, interval_ms
+            db, symbol.upper(), mapped_metric, start_time_ms, current_time_ms, interval_ms
         )
         preloaded_data[mapped_metric] = raw_data
         # Build timestamp index for binary search (data is already sorted by timestamp)
