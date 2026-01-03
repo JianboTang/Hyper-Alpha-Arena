@@ -165,6 +165,14 @@ class SignalAnalysisService:
             values, min_ts, max_ts = self._get_oi_history(
                 db, symbol, interval_ms, start_time_ms, current_time_ms
             )
+        elif metric == "price_change":
+            values, min_ts, max_ts = self._get_price_change_history(
+                db, symbol, interval_ms, start_time_ms, current_time_ms
+            )
+        elif metric == "volatility":
+            values, min_ts, max_ts = self._get_volatility_history(
+                db, symbol, interval_ms, start_time_ms, current_time_ms
+            )
         else:
             raise ValueError(f"Unsupported metric: {metric}")
 
@@ -415,6 +423,92 @@ class SignalAnalysisService:
 
         sorted_times = sorted(buckets.keys())
         values = [buckets[ts] for ts in sorted_times]
+
+        min_ts = sorted_times[0] if sorted_times else None
+        max_ts = sorted_times[-1] if sorted_times else None
+        return values, min_ts, max_ts
+
+    def _get_price_change_history(self, db, symbol, interval_ms, start_time_ms, current_time_ms):
+        """Get price change percentage history."""
+        from services.market_flow_indicators import floor_timestamp
+        from database.models import MarketTradesAggregated
+
+        records = db.query(
+            MarketTradesAggregated.timestamp,
+            MarketTradesAggregated.high_price
+        ).filter(
+            MarketTradesAggregated.symbol == symbol.upper(),
+            MarketTradesAggregated.timestamp >= start_time_ms,
+            MarketTradesAggregated.timestamp <= current_time_ms,
+            MarketTradesAggregated.high_price.isnot(None)
+        ).order_by(MarketTradesAggregated.timestamp).all()
+
+        if not records:
+            return [], None, None
+
+        buckets = {}
+        for ts, high_price in records:
+            bucket_ts = floor_timestamp(ts, interval_ms)
+            if bucket_ts not in buckets:
+                buckets[bucket_ts] = {"first": None, "last": None}
+            price = float(high_price)
+            if buckets[bucket_ts]["first"] is None:
+                buckets[bucket_ts]["first"] = price
+            buckets[bucket_ts]["last"] = price
+
+        sorted_times = sorted(buckets.keys())
+        values = []
+        for i in range(1, len(sorted_times)):
+            prev_price = buckets[sorted_times[i-1]]["last"]
+            curr_price = buckets[sorted_times[i]]["last"]
+            if prev_price and prev_price > 0:
+                change_pct = ((curr_price - prev_price) / prev_price) * 100
+                values.append(change_pct)
+
+        min_ts = sorted_times[0] if sorted_times else None
+        max_ts = sorted_times[-1] if sorted_times else None
+        return values, min_ts, max_ts
+
+    def _get_volatility_history(self, db, symbol, interval_ms, start_time_ms, current_time_ms):
+        """Get price volatility (high-low)/low percentage history."""
+        from services.market_flow_indicators import floor_timestamp
+        from database.models import MarketTradesAggregated
+
+        records = db.query(
+            MarketTradesAggregated.timestamp,
+            MarketTradesAggregated.high_price,
+            MarketTradesAggregated.low_price
+        ).filter(
+            MarketTradesAggregated.symbol == symbol.upper(),
+            MarketTradesAggregated.timestamp >= start_time_ms,
+            MarketTradesAggregated.timestamp <= current_time_ms,
+            MarketTradesAggregated.high_price.isnot(None),
+            MarketTradesAggregated.low_price.isnot(None)
+        ).order_by(MarketTradesAggregated.timestamp).all()
+
+        if not records:
+            return [], None, None
+
+        buckets = {}
+        for ts, high_price, low_price in records:
+            bucket_ts = floor_timestamp(ts, interval_ms)
+            if bucket_ts not in buckets:
+                buckets[bucket_ts] = {"high": None, "low": None}
+            h = float(high_price)
+            l = float(low_price)
+            if buckets[bucket_ts]["high"] is None or h > buckets[bucket_ts]["high"]:
+                buckets[bucket_ts]["high"] = h
+            if buckets[bucket_ts]["low"] is None or l < buckets[bucket_ts]["low"]:
+                buckets[bucket_ts]["low"] = l
+
+        sorted_times = sorted(buckets.keys())
+        values = []
+        for ts in sorted_times:
+            high = buckets[ts]["high"]
+            low = buckets[ts]["low"]
+            if high and low and low > 0:
+                volatility_pct = ((high - low) / low) * 100
+                values.append(volatility_pct)
 
         min_ts = sorted_times[0] if sorted_times else None
         max_ts = sorted_times[-1] if sorted_times else None

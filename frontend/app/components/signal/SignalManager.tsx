@@ -252,6 +252,8 @@ const METRICS = [
   { value: 'order_imbalance', label: 'Order Imbalance', desc: 'Order book imbalance (-1 to 1). Positive=buy pressure' },
   { value: 'oi', label: 'OI (Absolute)', desc: 'Absolute Open Interest value in USD' },
   { value: 'taker_volume', label: 'Taker Volume', desc: 'Composite signal: direction + ratio + volume threshold', isComposite: true },
+  { value: 'price_change', label: 'Price Change', desc: 'Price change % over time window. Formula: (current-prev)/prev*100. Positive=up, Negative=down' },
+  { value: 'volatility', label: 'Volatility', desc: 'Price volatility % over time window. Formula: (high-low)/low*100. Always positive, detects swings' },
 ]
 
 // Direction options for taker_volume composite signal
@@ -275,6 +277,8 @@ const TIME_WINDOWS = [
   { value: '15m', label: '15 min', desc: 'Medium-term, more reliable' },
   { value: '30m', label: '30 min', desc: 'Longer-term trends' },
   { value: '1h', label: '1 hour', desc: 'Major trend changes only' },
+  { value: '2h', label: '2 hours', desc: 'Long-term trend confirmation' },
+  { value: '4h', label: '4 hours', desc: 'Very long-term, major moves only' },
 ]
 // Symbols are now loaded dynamically from Hyperliquid watchlist (see watchlistSymbols state)
 

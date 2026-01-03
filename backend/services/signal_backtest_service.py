@@ -1310,6 +1310,19 @@ class SignalBacktestService:
                 query = query.filter(MarketOrderbookSnapshots.timestamp <= kline_max_ts)
             result = query.order_by(MarketOrderbookSnapshots.timestamp).all()
 
+        elif metric in ("price_change", "volatility"):
+            table_name = "market_trades_aggregated"
+            query = db.query(
+                MarketTradesAggregated.timestamp,
+                MarketTradesAggregated.high_price,
+                MarketTradesAggregated.low_price
+            ).filter(MarketTradesAggregated.symbol == symbol.upper())
+            if start_time:
+                query = query.filter(MarketTradesAggregated.timestamp >= start_time)
+            if kline_max_ts:
+                query = query.filter(MarketTradesAggregated.timestamp <= kline_max_ts)
+            result = query.order_by(MarketTradesAggregated.timestamp).all()
+
         else:
             logger.warning(f"[Backtest] UNKNOWN metric: {metric}, returning empty data")
             return []
@@ -1380,6 +1393,10 @@ class SignalBacktestService:
             return self._calc_depth_ratio_at_time(relevant_data, interval_ms)
         elif metric == "taker_ratio":
             return self._calc_taker_ratio_at_time(relevant_data, interval_ms)
+        elif metric == "price_change":
+            return self._calc_price_change_at_time(relevant_data, interval_ms)
+        elif metric == "volatility":
+            return self._calc_volatility_at_time(relevant_data, interval_ms)
         return None
 
     def _calc_cvd_at_time(self, data: List[tuple], interval_ms: int) -> Optional[float]:
@@ -1481,6 +1498,65 @@ class SignalBacktestService:
         last = buckets[sorted_times[-1]]
         if last["buy"] > 0 and last["sell"] > 0:
             return math.log(last["buy"] / last["sell"])
+        return None
+
+    def _calc_price_change_at_time(self, data: List[tuple], interval_ms: int) -> Optional[float]:
+        """Calculate price change percentage at a specific time.
+
+        Data format: (timestamp, high_price, low_price)
+        Returns percentage change from previous period to current period.
+        """
+        from services.market_flow_indicators import floor_timestamp
+
+        buckets = {}
+        for ts, high, low in data:
+            bucket_ts = floor_timestamp(ts, interval_ms)
+            price = float(high) if high else None
+            if price:
+                if bucket_ts not in buckets:
+                    buckets[bucket_ts] = {"first": price, "last": price}
+                else:
+                    buckets[bucket_ts]["last"] = price
+
+        sorted_times = sorted(buckets.keys())
+        if len(sorted_times) < 2:
+            return None
+
+        prev_price = buckets[sorted_times[-2]]["last"]
+        curr_price = buckets[sorted_times[-1]]["last"]
+        if prev_price and prev_price > 0:
+            return ((curr_price - prev_price) / prev_price) * 100
+        return None
+
+    def _calc_volatility_at_time(self, data: List[tuple], interval_ms: int) -> Optional[float]:
+        """Calculate volatility (price range) percentage at a specific time.
+
+        Data format: (timestamp, high_price, low_price)
+        Returns (high - low) / low * 100 for the current period.
+        """
+        from services.market_flow_indicators import floor_timestamp
+
+        buckets = {}
+        for ts, high, low in data:
+            bucket_ts = floor_timestamp(ts, interval_ms)
+            h = float(high) if high else None
+            l = float(low) if low else None
+            if h and l:
+                if bucket_ts not in buckets:
+                    buckets[bucket_ts] = {"high": h, "low": l}
+                else:
+                    if h > buckets[bucket_ts]["high"]:
+                        buckets[bucket_ts]["high"] = h
+                    if l < buckets[bucket_ts]["low"]:
+                        buckets[bucket_ts]["low"] = l
+
+        if not buckets:
+            return None
+
+        sorted_times = sorted(buckets.keys())
+        last = buckets[sorted_times[-1]]
+        if last["low"] > 0:
+            return ((last["high"] - last["low"]) / last["low"]) * 100
         return None
 
     def _calc_taker_data_at_time(

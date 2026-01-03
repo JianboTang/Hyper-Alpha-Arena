@@ -82,6 +82,8 @@ You have exactly 3 tools. Use them efficiently:
 - order_imbalance: Normalized imbalance -1 to +1 (real-time pressure)
 - taker_buy_ratio: Log of taker buy/sell ratio, ln(buy/sell). >0=buyers dominate, <0=sellers dominate. Symmetric around 0.
 - taker_volume: **COMPOSITE INDICATOR** - Detects when one side dominates with significant volume. Requires: direction (buy/sell/any), ratio_threshold (multiplier, e.g., 1.5 = 50% more), volume_threshold (min total volume in USD).
+- price_change: Price change percentage over time window. Positive=price up, negative=price down. Formula: (current_price - prev_price) / prev_price * 100
+- volatility: Price volatility (range) percentage over time window. Always positive. Formula: (high - low) / low * 100. Detects price swings regardless of direction.
 
 ## OPERATORS (for standard indicators)
 - greater_than, less_than, greater_than_or_equal, less_than_or_equal, abs_greater_than
@@ -194,8 +196,8 @@ SIGNAL_TOOLS = [
                     "symbol": {"type": "string", "description": "Trading symbol, e.g., BTC, ETH"},
                     "indicators": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["oi_delta_percent", "funding_rate", "cvd", "depth_ratio", "order_imbalance", "taker_buy_ratio", "taker_volume"]},
-                        "description": "List of indicator metric names to analyze (max 7). Note: taker_volume is a composite indicator."
+                        "items": {"type": "string", "enum": ["oi_delta_percent", "funding_rate", "cvd", "depth_ratio", "order_imbalance", "taker_buy_ratio", "taker_volume", "price_change", "volatility"]},
+                        "description": "List of indicator metric names to analyze (max 9). Note: taker_volume is a composite indicator."
                     },
                     "time_window": {"type": "string", "enum": ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h"], "description": "Aggregation time window"}
                 },

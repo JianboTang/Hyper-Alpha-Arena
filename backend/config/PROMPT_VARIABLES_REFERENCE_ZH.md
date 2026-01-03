@@ -177,6 +177,8 @@ trigger_interval: 150 minutes
 | FUNDING | `{BTC_FUNDING_15m}` | 资金费率（当前和年化） |
 | DEPTH | `{BTC_DEPTH_15m}` | 订单簿深度比率（买/卖） |
 | IMBALANCE | `{BTC_IMBALANCE_15m}` | 订单簿失衡度（-1到1） |
+| PRICE_CHANGE | `{BTC_PRICE_CHANGE_15m}` | 价格变化百分比。公式：(当前价-前期价)/前期价*100 |
+| VOLATILITY | `{BTC_VOLATILITY_15m}` | 价格波动率百分比。公式：(最高价-最低价)/最低价*100 |
 
 ### 支持的周期
 
@@ -233,6 +235,18 @@ Spread: 0.0100
 ```
 Order Imbalance: +0.125
 Imbalance last 5: +0.050, +0.080, +0.100, +0.130, +0.125
+```
+
+**PRICE_CHANGE（价格变化百分比）**
+```
+Price Change (15m): +2.35%
+Price Change last 5: -0.50%, +0.80%, +1.20%, +0.30%, +2.35%
+```
+
+**VOLATILITY（价格波动率）**
+```
+Volatility (15m): 1.85%
+Volatility last 5: 0.60%, 0.90%, 1.20%, 1.50%, 1.85%
 ```
 
 ### 使用示例

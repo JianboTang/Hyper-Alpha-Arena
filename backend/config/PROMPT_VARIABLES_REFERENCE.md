@@ -177,6 +177,8 @@ Market flow indicators provide insights into order flow, volume delta, and marke
 | FUNDING | `{BTC_FUNDING_15m}` | Funding Rate (current and annualized) |
 | DEPTH | `{BTC_DEPTH_15m}` | Order Book Depth Ratio (Bid/Ask) |
 | IMBALANCE | `{BTC_IMBALANCE_15m}` | Order Book Imbalance (-1 to 1) |
+| PRICE_CHANGE | `{BTC_PRICE_CHANGE_15m}` | Price Change % over time window. Formula: (current-prev)/prev*100 |
+| VOLATILITY | `{BTC_VOLATILITY_15m}` | Price Volatility % over time window. Formula: (high-low)/low*100 |
 
 ### Supported Periods
 
@@ -233,6 +235,18 @@ Spread: 0.0100
 ```
 Order Imbalance: +0.125
 Imbalance last 5: +0.050, +0.080, +0.100, +0.130, +0.125
+```
+
+**PRICE_CHANGE (Price Change Percentage)**
+```
+Price Change (15m): +2.35%
+Price Change last 5: -0.50%, +0.80%, +1.20%, +0.30%, +2.35%
+```
+
+**VOLATILITY (Price Volatility)**
+```
+Volatility (15m): 1.85%
+Volatility last 5: 0.60%, 0.90%, 1.20%, 1.50%, 1.85%
 ```
 
 ### Example Usage

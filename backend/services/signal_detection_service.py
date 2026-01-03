@@ -486,6 +486,8 @@ class SignalDetectionService:
                 "taker_ratio": "TAKER",
                 "funding": "FUNDING",
                 "oi": "OI",
+                "price_change": "PRICE_CHANGE",
+                "volatility": "VOLATILITY",
             }
 
             if metric not in indicator_map:

@@ -132,6 +132,12 @@ def get_indicator_value(
         elif indicator_upper == "FUNDING":
             data = _get_funding_data(db, symbol, period, interval_ms, current_time_ms)
             return data.get("current") if data else None
+        elif indicator_upper == "PRICE_CHANGE":
+            data = _get_price_change_data(db, symbol, period, interval_ms, current_time_ms)
+            return data.get("current") if data else None
+        elif indicator_upper == "VOLATILITY":
+            data = _get_volatility_data(db, symbol, period, interval_ms, current_time_ms)
+            return data.get("current") if data else None
         else:
             logger.warning(f"Unknown indicator: {indicator}")
             return None
@@ -189,6 +195,10 @@ def get_flow_indicators_for_prompt(
                 results["DEPTH"] = _get_depth_data(db, symbol, period, interval_ms, current_time_ms)
             elif indicator_upper == "IMBALANCE":
                 results["IMBALANCE"] = _get_imbalance_data(db, symbol, period, interval_ms, current_time_ms)
+            elif indicator_upper == "PRICE_CHANGE":
+                results["PRICE_CHANGE"] = _get_price_change_data(db, symbol, period, interval_ms, current_time_ms)
+            elif indicator_upper == "VOLATILITY":
+                results["VOLATILITY"] = _get_volatility_data(db, symbol, period, interval_ms, current_time_ms)
             else:
                 logger.warning(f"Unknown flow indicator: {indicator}")
         except Exception as e:
@@ -642,6 +652,169 @@ def _get_imbalance_data(
 
     return {
         "current": current_imbalance,
+        "last_5": last_5,
+        "period": period
+    }
+
+
+def _get_price_change_data(
+    db: Session, symbol: str, period: str, interval_ms: int, current_time_ms: int
+) -> Optional[Dict[str, Any]]:
+    """
+    Get Price Change data.
+
+    Calculates price change percentage over the specified time window.
+    Uses high_price from market_trades_aggregated (15-second granularity).
+
+    Returns:
+        current: Price change percentage (e.g., 0.15 means +0.15%)
+        start_price: Price at the start of the window
+        end_price: Current price
+        last_5: Last 5 period price changes
+    """
+    lookback_ms = interval_ms * 10
+    start_time = current_time_ms - lookback_ms
+
+    records = db.query(
+        MarketTradesAggregated.timestamp,
+        MarketTradesAggregated.high_price
+    ).filter(
+        MarketTradesAggregated.symbol == symbol.upper(),
+        MarketTradesAggregated.timestamp >= start_time,
+        MarketTradesAggregated.timestamp <= current_time_ms,
+        MarketTradesAggregated.high_price.isnot(None)
+    ).order_by(MarketTradesAggregated.timestamp).all()
+
+    if not records or len(records) < 2:
+        return None
+
+    # Aggregate by period bucket
+    buckets = {}
+    for ts, high_price in records:
+        bucket_ts = floor_timestamp(ts, interval_ms)
+        if bucket_ts not in buckets:
+            buckets[bucket_ts] = {"first_price": None, "last_price": None}
+        price = decimal_to_float(high_price)
+        if buckets[bucket_ts]["first_price"] is None:
+            buckets[bucket_ts]["first_price"] = price
+        buckets[bucket_ts]["last_price"] = price
+
+    sorted_times = sorted(buckets.keys())
+    if len(sorted_times) < 2:
+        return None
+
+    # Calculate price change for each period
+    price_changes = []
+    for i, ts in enumerate(sorted_times):
+        if i == 0:
+            continue
+        prev_ts = sorted_times[i - 1]
+        prev_price = buckets[prev_ts]["last_price"]
+        curr_price = buckets[ts]["last_price"]
+        if prev_price and prev_price > 0:
+            change_pct = ((curr_price - prev_price) / prev_price) * 100
+            price_changes.append(change_pct)
+
+    if not price_changes:
+        return None
+
+    # Current price change: compare current bucket to one period ago
+    current_bucket = buckets[sorted_times[-1]]
+    prev_bucket = buckets[sorted_times[-2]] if len(sorted_times) >= 2 else None
+
+    if prev_bucket and prev_bucket["last_price"] and prev_bucket["last_price"] > 0:
+        current_change = ((current_bucket["last_price"] - prev_bucket["last_price"])
+                          / prev_bucket["last_price"]) * 100
+    else:
+        current_change = price_changes[-1] if price_changes else 0
+
+    last_5 = price_changes[-5:] if len(price_changes) >= 5 else price_changes
+
+    return {
+        "current": current_change,
+        "start_price": prev_bucket["last_price"] if prev_bucket else None,
+        "end_price": current_bucket["last_price"],
+        "last_5": last_5,
+        "period": period
+    }
+
+
+def _get_volatility_data(
+    db: Session, symbol: str, period: str, interval_ms: int, current_time_ms: int
+) -> Optional[Dict[str, Any]]:
+    """
+    Get Volatility (Price Range) data.
+
+    Calculates price volatility as (high - low) / low percentage over the time window.
+    Uses high_price and low_price from market_trades_aggregated (15-second granularity).
+
+    Returns:
+        current: Current period volatility percentage (e.g., 0.25 means 0.25%)
+        high: Highest price in the window
+        low: Lowest price in the window
+        last_5: Last 5 period volatility values
+    """
+    lookback_ms = interval_ms * 10
+    start_time = current_time_ms - lookback_ms
+
+    records = db.query(
+        MarketTradesAggregated.timestamp,
+        MarketTradesAggregated.high_price,
+        MarketTradesAggregated.low_price
+    ).filter(
+        MarketTradesAggregated.symbol == symbol.upper(),
+        MarketTradesAggregated.timestamp >= start_time,
+        MarketTradesAggregated.timestamp <= current_time_ms,
+        MarketTradesAggregated.high_price.isnot(None),
+        MarketTradesAggregated.low_price.isnot(None)
+    ).order_by(MarketTradesAggregated.timestamp).all()
+
+    if not records:
+        return None
+
+    # Aggregate by period bucket - track high and low for each bucket
+    buckets = {}
+    for ts, high_price, low_price in records:
+        bucket_ts = floor_timestamp(ts, interval_ms)
+        high = decimal_to_float(high_price)
+        low = decimal_to_float(low_price)
+        if bucket_ts not in buckets:
+            buckets[bucket_ts] = {"high": high, "low": low}
+        else:
+            if high and (buckets[bucket_ts]["high"] is None or high > buckets[bucket_ts]["high"]):
+                buckets[bucket_ts]["high"] = high
+            if low and (buckets[bucket_ts]["low"] is None or low < buckets[bucket_ts]["low"]):
+                buckets[bucket_ts]["low"] = low
+
+    sorted_times = sorted(buckets.keys())
+    if not sorted_times:
+        return None
+
+    # Calculate volatility for each period
+    volatilities = []
+    for ts in sorted_times:
+        bucket = buckets[ts]
+        high = bucket["high"]
+        low = bucket["low"]
+        if high and low and low > 0:
+            volatility_pct = ((high - low) / low) * 100
+            volatilities.append(volatility_pct)
+
+    if not volatilities:
+        return None
+
+    current_bucket = buckets[sorted_times[-1]]
+    current_high = current_bucket["high"]
+    current_low = current_bucket["low"]
+    current_volatility = ((current_high - current_low) / current_low * 100
+                          if current_low and current_low > 0 else 0)
+
+    last_5 = volatilities[-5:] if len(volatilities) >= 5 else volatilities
+
+    return {
+        "current": current_volatility,
+        "high": current_high,
+        "low": current_low,
         "last_5": last_5,
         "period": period
     }
