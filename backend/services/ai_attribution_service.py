@@ -372,6 +372,9 @@ def _tool_get_attribution_summary(db: Session, args: Dict) -> str:
 
 def _tool_get_account_strategy(db: Session, args: Dict) -> str:
     """Get account strategy configuration"""
+    from database.models import AccountStrategyConfig
+    from repositories.strategy_repo import parse_signal_pool_ids
+
     account_id = args.get("account_id")
     if not account_id:
         return json.dumps({"error": "account_id is required"})
@@ -380,18 +383,32 @@ def _tool_get_account_strategy(db: Session, args: Dict) -> str:
     if not account:
         return json.dumps({"error": f"Account {account_id} not found"})
 
-    # Get prompt binding - handle case where account is not bound to signal pool
+    # Get prompt binding for prompt template info
     prompt_binding = getattr(account, 'prompt_binding', None)
     prompt_info = None
-    signal_pool_id = None
+    if prompt_binding and prompt_binding.prompt_template:
+        prompt_info = {
+            "id": prompt_binding.prompt_template.id,
+            "name": prompt_binding.prompt_template.name
+        }
 
-    if prompt_binding:
-        signal_pool_id = prompt_binding.signal_pool_id
-        if prompt_binding.prompt_template:
-            prompt_info = {
-                "id": prompt_binding.prompt_template.id,
-                "name": prompt_binding.prompt_template.name
-            }
+    # Get signal pool binding from AccountStrategyConfig (correct source)
+    strategy = db.query(AccountStrategyConfig).filter(
+        AccountStrategyConfig.account_id == account_id
+    ).first()
+
+    signal_pool_ids = []
+    signal_pool_names = []
+    if strategy:
+        signal_pool_ids = parse_signal_pool_ids(strategy)
+        # Query pool names
+        if signal_pool_ids:
+            result = db.execute(
+                text("SELECT id, pool_name FROM signal_pools WHERE id = ANY(:ids)"),
+                {"ids": signal_pool_ids}
+            ).fetchall()
+            pool_name_map = {row[0]: row[1] for row in result}
+            signal_pool_names = [pool_name_map.get(pid) for pid in signal_pool_ids if pool_name_map.get(pid)]
 
     return json.dumps({
         "account_id": account.id,
@@ -403,8 +420,9 @@ def _tool_get_account_strategy(db: Session, args: Dict) -> str:
         "max_leverage": account.max_leverage,
         "default_leverage": account.default_leverage,
         "prompt_template": prompt_info,
-        "signal_pool_id": signal_pool_id,
-        "note": "Account not bound to any signal pool" if not prompt_binding else None
+        "signal_pool_ids": signal_pool_ids if signal_pool_ids else None,
+        "signal_pool_names": signal_pool_names if signal_pool_names else None,
+        "note": "Account not bound to any signal pool" if not signal_pool_ids else None
     })
 
 
@@ -431,7 +449,7 @@ def _tool_get_prompt_template(db: Session, args: Dict) -> str:
 
 
 def _tool_get_signal_pool_config(db: Session, args: Dict) -> str:
-    """Get signal pool configuration"""
+    """Get signal pool configuration with detailed signal trigger conditions"""
     pool_id = args.get("pool_id")
     if not pool_id:
         return json.dumps({"error": "pool_id is required"})
@@ -448,13 +466,43 @@ def _tool_get_signal_pool_config(db: Session, args: Dict) -> str:
         except:
             pass
 
+    # Parse symbols JSON
+    symbols = []
+    if pool.symbols:
+        try:
+            symbols = json.loads(pool.symbols) if isinstance(pool.symbols, str) else pool.symbols
+        except:
+            pass
+
+    # Fetch detailed signal configurations
+    signals_detail = []
+    if signal_ids:
+        result = db.execute(
+            text("SELECT id, signal_name, description, trigger_condition FROM signal_definitions WHERE id = ANY(:ids)"),
+            {"ids": signal_ids}
+        ).fetchall()
+        for row in result:
+            trigger_condition = row[3]
+            if isinstance(trigger_condition, str):
+                try:
+                    trigger_condition = json.loads(trigger_condition)
+                except:
+                    pass
+            signals_detail.append({
+                "id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "trigger_condition": trigger_condition
+            })
+
     return json.dumps({
         "id": pool.id,
         "name": pool.pool_name,
-        "symbol": pool.symbols,
+        "symbols": symbols,
         "logic": pool.logic,
         "enabled": pool.enabled,
-        "signal_ids": signal_ids
+        "signal_ids": signal_ids,
+        "signals": signals_detail
     })
 
 
