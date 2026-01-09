@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import {
   Dialog,
@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Trash2, Plus, Pencil } from 'lucide-react'
+import { Trash2, Plus, Pencil, Download, Upload } from 'lucide-react'
 import {
   getAccounts as getAccounts,
   createAccount as createAccount,
@@ -17,13 +17,17 @@ import {
   testLLMConnection,
   checkBuilderAuthorization,
   approveBuilder,
+  exportTraderData,
   type TradingAccount,
   type TradingAccountCreate,
   type TradingAccountUpdate,
-  type UnauthorizedAccount
+  type UnauthorizedAccount,
+  type TraderExportData
 } from '@/lib/api'
 import WalletConfigPanel from '@/components/trader/WalletConfigPanel'
 import { AuthorizationModal } from '@/components/hyperliquid'
+import TraderDataImportDialog from '@/components/trader/TraderDataImportDialog'
+import { useTranslation } from 'react-i18next'
 
 interface SettingsDialogProps {
   open: boolean
@@ -45,6 +49,7 @@ interface AIAccountCreate extends TradingAccountCreate {
 }
 
 export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, embedded = false }: SettingsDialogProps) {
+  const { t } = useTranslation()
   const [accounts, setAccounts] = useState<AIAccount[]>([])
   const [loading, setLoading] = useState(false)
   const [toggleLoadingId, setToggleLoadingId] = useState<number | null>(null)
@@ -55,6 +60,9 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, e
   const [testing, setTesting] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [unauthorizedAccounts, setUnauthorizedAccounts] = useState<UnauthorizedAccount[]>([])
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importTargetAccount, setImportTargetAccount] = useState<AIAccount | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [newAccount, setNewAccount] = useState<AIAccountCreate>({
     name: '',
     model: '',
@@ -327,6 +335,37 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, e
     loadAccounts() // Reload to get updated trading status
   }
 
+  const handleExport = async (account: AIAccount) => {
+    try {
+      const data = await exportTraderData(account.id)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `trader-${account.name}-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(t('traderData.exportSuccess', { count: data.decision_logs.length }))
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast.error(t('traderData.exportFailed'))
+    }
+  }
+
+  const handleImportClick = (account: AIAccount) => {
+    setImportTargetAccount(account)
+    setImportDialogOpen(true)
+  }
+
+  const handleImportComplete = () => {
+    setImportDialogOpen(false)
+    setImportTargetAccount(null)
+    loadAccounts()
+    onAccountUpdated?.()
+  }
+
   const content = (
     <>
       {!embedded && (
@@ -502,6 +541,22 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, e
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
+                              onClick={() => handleExport(account)}
+                              variant="outline"
+                              size="sm"
+                              title={t('traderData.export')}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              onClick={() => handleImportClick(account)}
+                              variant="outline"
+                              size="sm"
+                              title={t('traderData.import')}
+                            >
+                              <Upload className="h-4 w-4" />
+                            </Button>
+                            <Button
                               onClick={() => startEdit(account)}
                               variant="outline"
                               size="sm"
@@ -539,6 +594,14 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, e
           unauthorizedAccounts={unauthorizedAccounts}
           onAuthorizationComplete={handleAuthorizationComplete}
         />
+        {importTargetAccount && (
+          <TraderDataImportDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
+            account={importTargetAccount}
+            onImportComplete={handleImportComplete}
+          />
+        )}
       </>
     )
   }
@@ -556,6 +619,14 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated, e
         unauthorizedAccounts={unauthorizedAccounts}
         onAuthorizationComplete={handleAuthorizationComplete}
       />
+      {importTargetAccount && (
+        <TraderDataImportDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          account={importTargetAccount}
+          onImportComplete={handleImportComplete}
+        />
+      )}
     </>
   )
 }

@@ -945,5 +945,30 @@
       "suggestedChange": "建议",
       "reason": "原因"
     }
+  },
+  "traderData": {
+    "export": "导出数据",
+    "import": "导入数据",
+    "exportSuccess": "已导出 {{count}} 条决策记录",
+    "exportFailed": "导出失败",
+    "importTitle": "导入交易数据",
+    "importTo": "导入历史数据到 {{name}}",
+    "selectFile": "点击选择 JSON 文件",
+    "jsonOnly": "仅支持从本系统导出的 .json 文件",
+    "invalidFormat": "文件格式无效",
+    "parseError": "文件解析失败",
+    "sourceTrader": "来源 Trader",
+    "exportedAt": "导出时间",
+    "willImport": "将导入",
+    "willSkip": "将跳过（重复）",
+    "decisions": "条决策",
+    "trades": "条交易",
+    "importWarning": "导入操作不可撤销，请确认数据正确后再继续。",
+    "confirmImport": "确认导入",
+    "importing": "导入中...",
+    "importSuccess": "导入成功",
+    "importFailed": "导入失败",
+    "importComplete": "导入完成",
+    "importedCount": "成功导入 {{count}} 条记录"
   }
 }

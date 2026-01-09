@@ -935,5 +935,30 @@
       "suggestedChange": "Suggested",
       "reason": "Reason"
     }
+  },
+  "traderData": {
+    "export": "Export Data",
+    "import": "Import Data",
+    "exportSuccess": "Exported {{count}} decision records",
+    "exportFailed": "Export failed",
+    "importTitle": "Import Trader Data",
+    "importTo": "Import historical data to {{name}}",
+    "selectFile": "Click to select a JSON file",
+    "jsonOnly": "Only .json files exported from this system are supported",
+    "invalidFormat": "Invalid file format",
+    "parseError": "Failed to parse file",
+    "sourceTrader": "Source Trader",
+    "exportedAt": "Exported at",
+    "willImport": "Will import",
+    "willSkip": "Will skip (duplicates)",
+    "decisions": "decisions",
+    "trades": "trades",
+    "importWarning": "Import is irreversible. Please confirm the data is correct before proceeding.",
+    "confirmImport": "Confirm Import",
+    "importing": "Importing...",
+    "importSuccess": "Import completed successfully",
+    "importFailed": "Import failed",
+    "importComplete": "Import Complete",
+    "importedCount": "Successfully imported {{count}} records"
   }
 }
